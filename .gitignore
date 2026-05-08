@@ -60,3 +60,6 @@ config.yaml.bak
 /frontend/playwright-report/
 .gstack/
 .worktrees
+skills/gstack
+skills/superpowers
+CLAUDE.md
