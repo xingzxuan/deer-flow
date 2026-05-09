@@ -2,10 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | 草稿（Draft） |
+| 状态 | 草稿（Draft） · 2026-05-09 据 spike + 审计修订 §1 / §2.1 / §2.2 / §2.5 / §2.6 / §3 / §4 / §6 |
 | 决策日期 | TBD |
 | 决策者 | 后端 lead + 架构 + 渠道 owner |
 | 关联 ADR | ADR-001 数据隔离、ADR-003 LLM Key 与计费、ADR-005 存储拓扑 |
+| 关联 spike / 审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) · [langgraph-postgres spike](./adr-spike-langgraph-postgres.zh-CN.md) |
 
 ---
 
@@ -15,13 +16,14 @@ ADR-001 ~ 005 解决了"数据/沙箱/Key/RBAC/存储"五个面，但 DeerFlow �
 
 | 组件 | 现状 | 现在的 key | 多租户后的问题 |
 |---|---|---|---|
-| LangGraph Checkpointer | 内置 `AsyncSqliteSaver` / `AsyncPostgresSaver`（`runtime/checkpointer/async_provider.py`），表结构由 LangGraph 自己定 | `thread_id` | 表里只有 `thread_id`，没有 `tenant_id`；ADR-001 的 RLS policy 怎么挂、`SET LOCAL` 怎么注入 |
+| LangGraph Checkpointer | 内置 `AsyncSqliteSaver` / `AsyncPostgresSaver`（`runtime/checkpointer/async_provider.py:73,117`，走 `from_conn_string`），表结构由 LangGraph 自己定 | `thread_id` | 表里只有 `thread_id`，没有 `tenant_id`；`langgraph-checkpoint-postgres==3.0.5` 不存在 `connection_factory`（[spike](./adr-spike-langgraph-postgres.zh-CN.md) §2），`SET LOCAL` 注入路径不通；只能走应用层强校验 |
 | MCP 工具缓存 | `mcp/cache.py:11` 一个进程级 `_mcp_tools_cache: list[BaseTool]`，按 `extensions_config.json` 的 mtime 失效 | 无（全局） | 每个租户启用的 MCP server 不同；当前缓存命中第一个加载的租户配置 |
+| MCP OAuth token | `mcp/oauth.py:25-31` `OAuthTokenManager` token 缓存为**进程内存 `dict[str, _OAuthToken]`**，**无任何持久化**——进程重启后重新刷 token | 无（全局） | 多租户后必须按 tenant 隔离 + 持久化，从"无持久化"直接到"KMS 加密 DB"——比"文件挪到 DB"成本高 |
 | Skills loader | `skills/loader.py` 扫 `skills/public/` + `skills/custom/`，结果走 LRU；MCP 工具拼装在内 | 文件系统路径 | 多租户后 `skills/custom/` 不再是全局共享，要按租户维度拉/解压 |
 | Sandbox provider 单例 | `LocalSandboxProvider` / `AioSandboxProvider` 在 lifespan 创建一次，所有 thread 共享 | thread_id | ADR-002 切到 K8s 后是 per-tenant Namespace，provider 必须知道当前租户 |
 | Memory 抽取 LLM 调用 | `MemoryMiddleware` 30s debounce 后发 LLM 抽取事实 | 当前 thread 的 user_id | 这次调用的 token 算平台还是租户？BYO 时用谁的 key？ |
 | Title / Summarization 内部 LLM 调用 | `TitleMiddleware` / `SummarizationMiddleware` 在 thread 上下文里复用主对话 LLM | 同上 | 同上 |
-| IM 渠道 ↔ 用户绑定 | `app/channels/store.py` 把 IM 用户映射到平台 user_id；落 `~/.deer-flow/channels.yaml` | platform user_id | Slack workspace / 飞书租户 / 企微 corp 怎么映射到平台 tenant？webhook 来流量时怎么决定 tenant 上下文？ |
+| IM 渠道 ↔ 用户绑定 | `app/channels/store.py:36-42` 把 IM `channel:chat[:topic]` 映射到 `{thread_id, user_id}`；落 `${DEER_FLOW_HOME}/channels/store.json`（不是 `channels.yaml`），**当前没有 binding / workspace 概念** | platform user_id | Slack workspace / 飞书租户 / 企微 corp 怎么映射到平台 tenant？webhook 来流量时怎么决定 tenant 上下文？需要新建 `channel_bindings` 表 |
 
 这一组不解决，ADR-001 的 RLS、ADR-003 的计费都是空中楼阁。
 
@@ -31,33 +33,22 @@ ADR-001 ~ 005 解决了"数据/沙箱/Key/RBAC/存储"五个面，但 DeerFlow �
 
 ### 2.1 LangGraph Checkpointer
 
-**决策**：保留 LangGraph 原生 checkpointer 表结构（不 fork），但要做四件事：
+**决策**：保留 LangGraph 原生 checkpointer（不 fork、不 ALTER 它的表），租户隔离走**应用层强校验 + thread_id 唯一约束兜底**。详见 ADR-001 §4.1.1 两层模型。
 
-1. **逻辑租户隔离靠 thread_id 命名空间**：每个 `thread_id` 在 ADR-001 的 `threads_meta(tenant_id, thread_id)` 表里有租户归属。`AssistantsCompat` 路由收到 thread 操作时，**先用 `threads_meta` 校验 thread_id ↔ tenant_id**，再放行 LangGraph 调用。这是第一道防线。
-2. **物理隔离靠 RLS + 注入**：在 LangGraph 自己的 `checkpoints` / `checkpoint_writes` / `checkpoint_blobs` 三张表上加 RLS policy，policy 通过 `app.tenant_id` session var 过滤。需要写一段 SQL 脚本在 init migration 里跑：
-    ```sql
-    -- LangGraph 自己创建表后跑（不动它的 schema）
-    ALTER TABLE checkpoints ENABLE ROW LEVEL SECURITY;
-    ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
+> 历史背景：原稿设想用 `connection_factory` 注入 `SET LOCAL app.tenant_id` + 在 LangGraph 表上挂 RLS。spike 验证（[adr-spike-langgraph-postgres](./adr-spike-langgraph-postgres.zh-CN.md)）发现 `langgraph-checkpoint-postgres==3.0.5` 不存在 `connection_factory` 参数；备选方案（子类化 `psycopg_pool` / 包装 saver / ALTER 加列）都有不可接受的维护成本。改用应用层强校验。
 
-    -- 通过 thread_id 反查 tenant_id（subquery 形式，性能要测）
-    CREATE POLICY tenant_isolation ON checkpoints
-        USING (
-          thread_id IN (
-            SELECT thread_id::text FROM threads_meta
-            WHERE tenant_id = current_setting('app.tenant_id', true)::uuid
-          )
-        );
-    -- checkpoint_writes / checkpoint_blobs 同样形态
-    ```
-    缺点：subquery 形式 RLS 在大表（>千万行）上有性能风险。**备选**：在 LangGraph 表上**直接加一列 `tenant_id`**（用 ALTER TABLE，不 fork），靠每次 `put` 之前 trigger 从 thread_id 反查并写入。这是侵入更深但性能更好的路。
-3. **`SET LOCAL` 注入路径**：LangGraph 的 `AsyncPostgresSaver` 自己持有连接池，DeerFlow 不能直接控制每次取连接。两条路：
-    - **改造点 A**：包装一个 `TenantAwareConnectionFactory`，注入到 saver 构造参数；每次 acquire 时 `SET LOCAL app.tenant_id = '<uuid>'`。需要看 LangGraph 是否支持自定义 connection factory（`langgraph-checkpoint-postgres>=2.0` 支持）。
-    - **改造点 B**：在 `RunManager` 创建/恢复 thread 前，**主动 issue 一条 `SET app.tenant_id`** 到 LangGraph 用的连接池上。需要 LangGraph 复用同一个连接（pool size = 1 模式不可行，必须能 binding）。
-    - **首选 A**；如果 LangGraph 版本不支持，用 B 作为兜底，并在升级版本后切回 A。
-4. **测试**：`backend/tests/test_harness_boundary.py` 之外，新增 `test_checkpointer_tenant_isolation.py` —— 建两个租户、各创建一个 thread，相互查询必须查不到。这是 RLS 是否生效的活体检测。
+具体落地三件事：
 
-**推翻条件**：LangGraph 升级后表结构变化导致 RLS 不可挂 → 切换到 fork checkpointer 实现，自己控制表结构。
+1. **入口路径强校验**：所有调 LangGraph saver 的入口——**`app/gateway/routers/threads.py`** 和 **`app/gateway/routers/thread_runs.py`**——在调用前必须先在 `threads_meta` 上做 `(tenant_id=current, thread_id=requested)` 查询；未命中即 404，命中后才放行。
+   - 创建 thread：先在 `threads_meta` 写入 `(tenant_id, thread_id, user_id)`，依赖 `UNIQUE (tenant_id, thread_id)` 复合索引兜底防重；再调 LangGraph 创建对应 thread
+   - 读/写 thread：先 SELECT `threads_meta`，命中后再放行
+   - **不在 LangGraph 自有表上挂 RLS**——`SET LOCAL app.tenant_id` 只对 DeerFlow 自有表生效（ADR-001 §4.2）
+2. **CI boundary 测试**：`backend/tests/` 下新增 `test_langgraph_access_boundary.py`——静态扫描禁止任何路径 import LangGraph saver/client 而绕过 `threads.py` / `thread_runs.py`。LangGraph Studio 直连必须走相同入口或显式审批
+3. **活体测试**：`tests/test_checkpointer_tenant_isolation.py`——建两个租户、各创建一个 thread，互相通过对方 thread_id 调 `/api/threads/{tid}` / `/api/threads/{tid}/runs` 必须 404；同 tid 走自己路径必须正常。这是入口校验是否生效的回归网
+
+**推翻条件**：
+- LangGraph 上游加入 `connection_factory` 或等价 hook → 切回"DeerFlow 表 + LangGraph 表统一 RLS"模型
+- 应用层校验在压测中暴露 perf 瓶颈 → 评估 fork checkpointer 自控 schema
 
 ### 2.2 MCP 工具缓存
 
@@ -96,7 +87,7 @@ class TenantMCPCache:
 
 - 现在 `mcp/cache.py:31` 靠 `extensions_config.json` 的 mtime 判 stale；DB 化后用 `tenant_mcp_configs.updated_at`（或 `version` 列单调递增），失效信号走仓储层而不是文件系统。
 - `MultiServerMCPClient` 实例**也要 per-tenant 持有**，因为它内部缓存了到各 MCP server 的连接 + OAuth token。租户切换不能复用别的租户的连接。
-- **OAuth token 存储**：当前 `mcp/oauth.py` 的 token 落本地文件，多租户后必须挪到 `tenant_secrets`（`(tenant_id, key='mcp_oauth:<server_name>')`），KMS 加密。
+- **OAuth token 存储**：当前 `mcp/oauth.py:25-31` 的 token 是**进程内存 `dict[str, _OAuthToken]`，无任何持久化**——进程重启后重新刷 token。多租户化要直接做"租户隔离 + 持久化 + 加密"三步并发：落 `tenant_secrets`（`(tenant_id, key='mcp_oauth:<server_name>')`）+ KMS 加密 + 失败回退到刷新流程。工作量比"文件挪到 DB"高一档，估工 M+。
 - 进程内存上限：`TenantMCPCache` 加 LRU 上限（默认 1000 租户），超过淘汰最久未访问的；淘汰时关闭它的 MCP client 释放连接。
 - Gateway PUT mcp 路由（`app/gateway/routers/mcp.py`）改完写 DB 后，调 `TenantMCPCache.invalidate(tenant_id)` 主动失效。
 
@@ -163,8 +154,8 @@ ADR-003 只覆盖了"主对话"的 LLM 调用计费，但 DeerFlow 的中间件�
 
 实现侧改造：
 
-- 这 3 个中间件目前都通过 `create_chat_model()` 拿 LLM；ADR-003 §4.2 已经把这个函数改成 tenant-aware，自动会带上 tenant key
-- `TokenUsageMiddleware` 现在按 message id 累加 token；多加一个 `usage_category` 字段（`main` / `memory` / `title` / `summarization`），写入 `tenant_usage_daily.usage_category`
+- 这 3 个中间件目前都通过 `create_chat_model()` 拿 LLM；ADR-003 §4.2 把这个函数改成 tenant-aware，自动会带上 tenant key
+- **`TokenUsageMiddleware` 当前只 log，不持久化**（`agents/middlewares/token_usage_middleware.py:268-275`）；新增 `usage_category` 字段（`main` / `memory` / `title` / `summarization`）+ 持久化路径都要从空白起，写入 `tenant_usage_daily(tenant_id, date, usage_category, tokens_in, tokens_out)`。详见 ADR-003 §4.4
 - usage 报表 UI 区分这四类，让客户对账
 
 **例外**：平台主动触发的 LLM 调用（比如平台 admin 跑健康检查时调用 LLM）算平台账，不算租户。
@@ -176,7 +167,10 @@ ADR-003 只覆盖了"主对话"的 LLM 调用计费，但 DeerFlow 的中间件�
 #### 形态 A：单租户独占一个 IM 集成（小客户/SaaS）
 
 每个 Slack workspace / 飞书企业 / 钉钉 corp 绑到**一个** tenant。
-现有 `app/channels/store.py` 的"channel binding"扩成：
+
+> 现状澄清：当前 `app/channels/store.py:36-42` 只存 `channel:chat[:topic] → {thread_id, user_id}` 的 JSON 字典（路径 `${DEER_FLOW_HOME}/channels/store.json`），**没有 binding / workspace 概念**。下面的 `channel_bindings` 表是新建，不是扩展现有结构。
+
+新建 `channel_bindings` 表：
 
 ```sql
 channel_bindings (
@@ -236,24 +230,26 @@ channel_user_links (
 
 | 模块 | 改动 | 估工 |
 |---|---|---|
-| `runtime/checkpointer/async_provider.py` | 接 LangGraph PG saver 的 connection factory，注入 `SET LOCAL` | M |
-| 新建 `tests/test_checkpointer_tenant_isolation.py` | RLS 活体测试 | S |
+| `app/gateway/routers/threads.py` + `thread_runs.py` | 入口注入 `(tenant_id, thread_id)` 校验；写路径先入 `threads_meta` | M |
+| 新建 `tests/test_checkpointer_tenant_isolation.py` | LangGraph 入口校验活体测试（不再是 RLS 测试） | S |
+| 新建 `tests/test_langgraph_access_boundary.py` | 静态扫描禁止绕过入口直连 saver | S |
 | `mcp/cache.py` | 模块级 → `TenantMCPCache` 类 | M |
-| `mcp/oauth.py` | OAuth token 存储从文件系统 → `tenant_secrets` | M |
-| `app/gateway/routers/mcp.py` | PUT 接口改写 DB + 调 invalidate | S |
+| `mcp/oauth.py` | OAuth token 从**进程内存** → `tenant_secrets`（持久化 + KMS 加密 + 失败回退到刷新） | M+ |
+| `app/gateway/routers/mcp.py` | PUT 接口改写 DB + 调 invalidate；不再依赖 `extensions_config.json` mtime | S |
 | `skills/loader.py` | 拆 platform / tenant 两路加载 | M |
 | `app/gateway/routers/skills.py` | install 路径改为按 tenant 写 DB + S3 | M |
 | `sandbox/k8s/provider.py`（ADR-002 新建） | `acquire` 注入 namespace = tenant | 已计入 ADR-002 |
 | Sandbox prewarm pool | 新增 controller，按 tenant 维度管理 | L |
-| `agents/memory/middleware.py` | usage_category=memory | S |
-| `agents/title.py` / `agents/summarization.py` | usage_category=title/summarization | S |
-| `agents/middleware/token_usage.py` | 增加 usage_category 维度 | S |
-| `app/channels/store.py` | binding 表加 tenant_id | M |
+| `agents/middlewares/memory_middleware.py` | usage_category=memory | S |
+| `agents/middlewares/title_middleware.py` / `summarization_middleware.py` | usage_category=title/summarization | S |
+| `agents/middlewares/token_usage_middleware.py` | **从只 log 升级为持久化**（参 ADR-003 §4.4） + 增加 usage_category 维度 | M |
+| 新建 `channel_bindings` 表 + 仓储 | IM workspace ↔ tenant 映射（不复用 store.json） | M |
+| `app/channels/store.py` | 现有 `channel:chat → {thread_id, user_id}` 字典升级为 SQL 表，并按 tenant 分区 | M |
 | `app/channels/manager.py` | webhook handler 注入 tenant ContextVar | M |
-| 新建 `app/channels/auth_filter.py` | 强制 tenant 上下文 | S |
+| 新建 `app/channels/auth_filter.py` | 强制 tenant 上下文 fail-closed | S |
 | 新建 `channel_user_links` 仓储 | IM user ↔ platform user | M |
 
-合计：约 12 人周（2 人 6 周 / 3 人 4 周），不含 ADR-001 ~ 005 各自的改造。
+合计：约 14 人周（2 人 7 周 / 3 人 5 周），不含 ADR-001 ~ 005 各自的改造。
 
 ---
 
@@ -261,10 +257,11 @@ channel_user_links (
 
 | 风险 | 缓解 |
 |---|---|
-| RLS subquery 反查 thread_id → tenant_id 全表扫 | 测试 EXPLAIN，必要时 LangGraph 表加 `tenant_id` 列（侵入但可控） |
+| **LangGraph 表无 RLS，应用层校验失效则跨租户**（§2.1 trade-off） | `threads_meta` `UNIQUE (tenant_id, thread_id)` 兜底；CI boundary 测试禁止绕过入口路由直连 saver；任何新增 LangGraph 直连路径必须 PR review |
 | LangGraph 升级换 schema | CI 锁版本；升级前先跑 tenant isolation 测试集 |
 | `TenantMCPCache` 内存爆 | LRU 上限 + 闲置淘汰；监控租户数 / 进程 |
 | MCP server 自身泄露租户上下文 | 出网走 ADR-002 egress gateway 白名单；MCP server 在沙箱内 stdio 启动时 env 不带平台 secret |
+| **MCP OAuth token 持久化是从无到有**，错误处理面更大 | 持久化失败时回退到"无持久化进程内存"模式（不阻塞业务）+ 报警；KMS 不可用时 fail-closed |
 | Memory 抽取算入租户用量被客户抗议"我没让它跑" | UI 显式开关 + 用量分项展示；默认开启可关 |
 | IM webhook 没注入 tenant 上下文 → 调用 RLS 全过滤掉空集 | 中间层 fail-closed；监控空集查询率 |
 | 多 IM 平台 token 在 `channel_bindings.config_encrypted` 泄露 | KMS 加密 + 审计每次 decrypt（参照 ADR-003 §4.6） |
@@ -274,7 +271,7 @@ channel_user_links (
 
 ## 5. 推翻条件
 
-- LangGraph 官方推出原生多租户 checkpointer → 切换并废弃本 ADR §2.1 的注入方案
+- LangGraph 官方推出原生多租户 checkpointer 或上游加入 `connection_factory` 等价 hook → 切回 ADR-001 §4.1.1 "DeerFlow 表 + LangGraph 表统一 RLS" 模型，废弃本 ADR §2.1 的应用层强校验作为唯一防线
 - 平台决定走"完全集中式 IM"（所有租户共用一个 bot account） → §2.6 切到形态 B 为唯一形态
 - MCP server 全部跑在 K8s sidecar 而非进程内 → §2.2 缓存策略需要重写，client 实例从进程内挪到 service mesh
 
@@ -284,11 +281,12 @@ channel_user_links (
 
 | 项 | 默认 |
 |---|---|
-| Checkpointer | LangGraph PG saver + RLS（subquery 反查 thread_id） |
+| Checkpointer | LangGraph PG saver 原状（不挂 RLS、不 ALTER 表）+ 入口路由强校验 + `threads_meta` `UNIQUE(tenant_id, thread_id)` 兜底 |
 | MCP cache | per-tenant LRU，上限 1000 租户/进程 |
+| MCP OAuth token | `tenant_secrets` 持久化 + KMS 加密；持久化失败回退到进程内存 + 报警 |
 | Skills | platform 公共只读 + tenant 私有；本地 LRU 5GB |
 | Sandbox prewarm | per-tenant 池，按 plan 配置大小 |
-| 内部 LLM 调用计费 | 全部记入 tenant，分 4 类 usage_category |
+| 内部 LLM 调用计费 | 全部记入 tenant，分 4 类 usage_category；`TokenUsageMiddleware` 必须先升级为持久化 |
 | IM 集成形态 | 形态 A：每租户独立 binding，UNIQUE(platform, external_workspace_id) |
 | IM ghost user TTL | 7 天未链接自动停 |
 | 审计 DB | 与业务 DB 物理分离（独立连接池或独立实例） |

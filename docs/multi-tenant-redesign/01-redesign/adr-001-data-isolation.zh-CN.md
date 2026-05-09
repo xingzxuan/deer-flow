@@ -2,10 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | 草稿（Draft） |
+| 状态 | 草稿（Draft） · 2026-05-09 据 spike 结果修订 §4.1.1 / §4.1.2 / §4.2 |
 | 决策日期 | TBD |
 | 决策者 | CTO + 架构 + 后端 lead |
 | 关联 ADR | ADR-004 租户层级、ADR-005 存储拓扑、ADR-006 运行时与渠道 |
+| 关联 spike / 审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) · [langgraph-postgres spike](./adr-spike-langgraph-postgres.zh-CN.md) |
 
 ---
 
@@ -93,39 +94,40 @@ CREATE INDEX idx_feedback_tenant_run ON feedback (tenant_id, run_id);
 
 **关键索引原则**：每个 `tenant_id` 都必须是复合索引的**第一列**——RLS policy 走的就是这条路径，前导列错了 RLS 会全表扫。
 
-#### 4.1.1 LangGraph 自有表（checkpoints / checkpoint_writes / checkpoint_blobs）
+#### 4.1.1 LangGraph 自有表（checkpoints / checkpoint_writes / checkpoint_blobs / checkpoint_migrations）
 
-`runtime/checkpointer/async_provider.py` 用的是 LangGraph 内置 `AsyncPostgresSaver`，**表结构不在 DeerFlow 控制下**——直接 ALTER 添加 `tenant_id` 列在 LangGraph 升级时会被它自己的 migration 覆盖。处理路径分两档（详见 ADR-006 §2.1）：
+`runtime/checkpointer/async_provider.py` 用的是 LangGraph 内置 `AsyncPostgresSaver`，**表结构不在 DeerFlow 控制下**。原稿讨论过两条路（subquery RLS / 列升级），spike（[adr-spike-langgraph-postgres](./adr-spike-langgraph-postgres.zh-CN.md)）验证后我们改用 **两层隔离模型**：
 
-**默认（subquery 形式 RLS，零侵入）**：
+| 表归属 | 隔离机制 | 防线性质 |
+|---|---|---|
+| **DeerFlow 自有表**（threads_meta、runs、run_events、feedback、users、tenant_*） | RLS + `SET LOCAL app.tenant_id` via SQLAlchemy session（DeerFlow 完全控制 conn pool） | DB 强约束 |
+| **LangGraph checkpoint 表** | **应用层强校验**——入口路由在调 LangGraph 前必查 `threads_meta` 上的 `(tenant_id, thread_id)` 归属 | 应用层强约束 + 表 unique constraint 兜底 |
 
-```sql
--- LangGraph 自动建表后，DeerFlow 的 init migration 跑：
-ALTER TABLE checkpoints ENABLE ROW LEVEL SECURITY;
-ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
+**为何对 LangGraph 表放弃 RLS**：
 
-CREATE POLICY tenant_isolation ON checkpoints
-    USING (
-      thread_id IN (
-        SELECT thread_id::text FROM threads_meta
-        WHERE tenant_id = current_setting('app.tenant_id', true)::uuid
-      )
-    );
--- checkpoint_writes / checkpoint_blobs 同形态，按 thread_id 反查
-```
+- `langgraph-checkpoint-postgres==3.0.5` **不存在 `connection_factory` 参数**（spike §2 实测）；其连接池注入路径只有 `__init__(conn=AsyncConnectionPool)` 这一个口子，且 `psycopg_pool` 自带的 `configure` callback 只在物理连接首次创建时跑——拿不到运行期 ContextVar 里的 tenant_id
+- 子类化 `AsyncConnectionPool` 重写 `getconn` 注入 `SET app.tenant_id`/`RESET` 是可行的 hack，但侵入 psycopg-pool 内部，库升级风险高（spike §3.1）
+- 给 LangGraph 表 ALTER 加 `tenant_id` 列同样不可取——LangGraph 用 `MIGRATIONS` 数组管理 schema，每次升级都要 diff 防漏（spike §3.4）
 
-**升级路径（侵入式列）**：当 subquery RLS 在大表上 EXPLAIN 出现问题时，改用：
+**LangGraph 表的安全模型**（接受的 trade-off）：
 
-```sql
-ALTER TABLE checkpoints ADD COLUMN tenant_id UUID;
-CREATE INDEX idx_checkpoints_tenant_thread ON checkpoints (tenant_id, thread_id);
--- trigger 在 INSERT 时从 threads_meta 反查 tenant_id 写入
--- 升级 LangGraph 前必须验证它的 migration 不会丢这列
-```
+- 安全等级从"DB 强约束"降级为"应用层强约束 + 表 unique constraint"
+- 强约束点是 **`threads_meta` 表上的 `UNIQUE (tenant_id, thread_id)` 复合索引** + 入口路由的强校验：任何代码路径要写 LangGraph 表前必须先在 `threads_meta` 找到对应行，且行的 `tenant_id` 与当前 ContextVar 一致
+- CI 加 boundary 测试，禁止任何路径绕过 `threads.py` / `thread_runs.py` 直连 LangGraph saver（包括 LangGraph Studio 必须走相同入口或显式审批）
+- 平台 admin 路径走 `BYPASSRLS` role 时同样必须经过应用层 audit，不直接跳过 thread 归属检查
+
+**未来可升级路径**（不阻塞 phase-0）：若上游接受 PR 加入 `connection_factory`，可平滑切回"DeerFlow 表 + LangGraph 表统一 RLS"模型。
 
 #### 4.1.2 第一道防线：thread_id ↔ tenant_id 校验
 
-不论用哪种 RLS 形态，`AssistantsCompat` 路由（`app/gateway/routers/assistants_compat.py`）在调用 LangGraph 之前**必须先用 `threads_meta` 校验 `(tenant_id, thread_id)` 归属**。RLS 是兜底，应用层校验是第一道防线——RLS 只能"过滤掉看不到的"，不能阻止"创建到错误租户名下"。
+LangGraph 调用入口在 **`app/gateway/routers/threads.py`**（thread CRUD）和 **`app/gateway/routers/thread_runs.py`**（run 创建/恢复/事件流）。这两个路由在调用 LangGraph 之前**必须先用 `threads_meta` 校验 `(tenant_id, thread_id)` 归属**：
+
+- **创建路径**：先在 `threads_meta` 写入 `(tenant_id=current, thread_id, user_id=current)`，依赖 `UNIQUE (tenant_id, thread_id)` 防重；再调 LangGraph 创建对应 thread
+- **读/写路径**：先用 `(current_tenant_id, requested_thread_id)` SELECT `threads_meta`，未命中即 404；命中后才允许调 LangGraph
+
+> 注：原稿写"在 `AssistantsCompat` 路由强制校验"是错的——`assistants_compat.py:1-50` 只服务 `assistants.search/get` 静态 stub，**不**触达 thread 入口（审计报告 §ADR-001 已修正）。
+
+应用层校验是第一道防线、`UNIQUE` 约束是 DB 层兜底——任何对 LangGraph 表的访问都经过这一关。
 
 ### 4.2 RLS policy 模板
 
@@ -151,24 +153,14 @@ async def _set_session_tenant(session: AsyncSession, tenant_id: str) -> None:
 
 每个仓储方法的开头自动调用，从 ContextVar 取 tenant_id（仿照现有 `resolve_user_id` 模式）。
 
-**LangGraph 自有连接池的注入**：DeerFlow 仓储和 LangGraph checkpointer 是**两套连接池**——前者是 SQLAlchemy `AsyncSession`，后者是 LangGraph 自己持有的 asyncpg 池。后者的注入路径不能复用上面的 helper：
+**LangGraph 自有连接池不参与 SET LOCAL**：DeerFlow 仓储和 LangGraph checkpointer 是**两套连接池**——前者是 SQLAlchemy `AsyncSession`（DeerFlow 控制），后者是 LangGraph 自己持有的 psycopg 池（DeerFlow 不可控）。按 §4.1.1 的两层模型：
 
-```python
-# 1. 优选：自定义 connection factory 注入到 saver 构造（langgraph-checkpoint-postgres>=2.0）
-async def tenant_aware_acquire(pool):
-    async with pool.acquire() as conn:
-        tid = get_current_tenant_id()
-        await conn.execute("SET LOCAL app.tenant_id = $1", tid)
-        yield conn
+- **DeerFlow 自有表**：上面 `_set_session_tenant` helper 在每次仓储调用前注入 `SET LOCAL`，RLS 兜底
+- **LangGraph 表**：**不注入 `SET LOCAL`**——LangGraph 表上不启用 RLS，租户隔离靠应用层强校验（§4.1.2）实现。`AsyncPostgresSaver` 仍按现状用 `from_conn_string`，无侵入
 
-saver = AsyncPostgresSaver(connection_factory=tenant_aware_acquire)
+> 原稿设想的"自定义 `connection_factory` 注入到 saver 构造"在 `langgraph-checkpoint-postgres==3.0.5` 不可行——库不存在该参数（[spike](./adr-spike-langgraph-postgres.zh-CN.md) §2.2/2.4）。详细备选方案与拒绝理由见 spike §3。
 
-# 2. 兜底：在 RunManager 进入 thread 前主动 issue 一条 SET（要求 LangGraph 复用同 conn）
-```
-
-具体路径选择与失败模式见 ADR-006 §2.1。
-
-**关键约束**：所有"会查 LangGraph 表"的代码路径——`AssistantsCompat` 路由、`RunManager`、checkpointer 直读——都必须保证调用栈上已注入 `app.tenant_id`，否则 RLS 会把整个会话过滤成空集。CI 加冒烟测试确认这点。
+**关键约束**：所有"会查 DeerFlow 自有表"的代码路径都必须保证调用栈上已注入 `app.tenant_id`，否则 RLS 会把整个会话过滤成空集。CI 加冒烟测试确认这点。LangGraph 表上的访问则必须经过 §4.1.2 的入口校验。
 
 ### 4.3 ContextVar 扩展
 
@@ -212,11 +204,13 @@ CREATE ROLE deerflow_admin BYPASSRLS;
 
 | 风险 | 缓解 |
 |---|---|
-| 应用层漏写 tenant_id WHERE | RLS 是兜底；CI 加静态检查（detect SQL 不带 tenant_id） |
+| 应用层漏写 tenant_id WHERE | RLS 是兜底（DeerFlow 表）；CI 加静态检查（detect SQL 不带 tenant_id） |
+| **LangGraph 表无 RLS，仅应用层强约束**（§4.1.1 trade-off） | `threads_meta` `UNIQUE (tenant_id, thread_id)` 兜底；CI boundary 测试禁止绕过 `threads.py` / `thread_runs.py` 直连 saver；定期审计任何新增的 LangGraph 直连路径 |
 | 索引前导列错了走全表扫 | DBA 评审所有 EXPLAIN；上线前压测 |
 | `current_setting('app.tenant_id')` 没设导致 RLS 全过滤掉 | 应用层 fail-closed；监控空集查询率 |
 | 跨租户分析需求多 | 提供受控的 admin role + 审计日志 |
 | SQLite 开发 vs Postgres 生产差异 | 测试集成层用 testcontainers 跑 Postgres；不允许用 SQLite 跑 RLS 相关测试 |
+| **当前不存在 Postgres 测试夹具基础设施**（审计报告 §ADR-001 highest-risk gap） | phase-0 必须先落 testcontainers + RLS 冒烟测试，再做仓储改造；否则 RLS bug 进生产 |
 | 单 DB 容量上限（>1TB 后维护困难） | 监控 DB 体积；超过阈值切 per-tenant DB（推翻方案） |
 
 ---

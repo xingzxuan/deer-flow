@@ -2,29 +2,35 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | 草稿（Draft） |
+| 状态 | 草稿（Draft） · 2026-05-09 据审计修订 §1 / §8 / §10 / §11 / §12（Better Auth 假设作废）|
 | 决策日期 | TBD |
 | 决策者 | 前端 lead + 后端 lead + 产品 |
 | 关联 ADR | ADR-001 数据隔离、ADR-004 RBAC、ADR-006 运行时与渠道 |
+| 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) |
 
 ---
 
 ## 1. 背景
 
-ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最先看到的是**浏览器地址栏长什么样**。多租户产品形态决定了 URL 形态、cookie scope、登录跳转、Better Auth 接入方式。
+ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最先看到的是**浏览器地址栏长什么样**。多租户产品形态决定了 URL 形态、cookie scope、登录跳转、auth 改造方式。
 
 当前 DeerFlow（`frontend/src/`）：
 - nginx 把 `/api/*` → Gateway 8001、`/api/langgraph/*` → 同 Gateway（重写）
-- 前端用 Better Auth 走 cookie session（路径作用域 `/`）
+- 前端**没有 Better Auth**——auth 走后端自签 JWT：Gateway `app/gateway/auth/jwt.py` 签发 → `access_token` cookie（HttpOnly）→ 前端 `core/auth/server.ts:25-26` 读 cookie 调 `/auth/me`
+- JWT payload 当前结构：`{sub, exp, iat, ver}`（`auth/jwt.py:14-19`），**无 tid/role**
+- `users.token_version` 列已存在 + JWT `ver` claim 已用作失效（`persistence/user/model.py:49`）
+- CSRF 双重 cookie 已实现（`csrf_middleware.py` + 前端 `core/api/api-client.ts:20-32`）
 - 没有租户概念，单 host 单工作区
-- LangGraph SDK client 在 `core/api/` 单例，所有 thread 操作共用一个 SDK 实例
+- LangGraph SDK client 在 `core/api/api-client.ts` 单例，所有 thread 操作共用一个 SDK 实例
 
 多租户后必须回答：
 
 1. URL 怎么标记 tenant？
 2. 多 tenant 切换时 SDK 单例怎么处理？
 3. cookie 怎么 scope（避免跨 tenant session 串）？
-4. Better Auth 怎么知道当前 tenant？
+4. JWT 怎么扩展才能带 tenant_id 和 role？
+
+> 审计纠正：原稿假设"前端用 Better Auth 走 cookie session"。`frontend/package.json` 实际不依赖 `better-auth`（grep 命中 0 次）；前端 auth 是后端自签 JWT + `access_token` cookie 直通——所有"Better Auth 改造"段落都改为"扩展现有 `auth/jwt.py` `TokenPayload`"，工作量更小。
 
 ---
 
@@ -39,7 +45,7 @@ ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最
 | Tenant 解析点 | nginx 不解析；后端 `AuthMiddleware` 从 path + JWT 双向交叉校验 |
 | Cookie scope | `Path=/`、不绑 tenant；通过 JWT 内 `tid` 区分 |
 | SDK 单例 | 全局单例，但切租户时 `await invalidate()` + 强制 reload |
-| Better Auth | 单一 `auth.deerflow.app` 登录域，登录后跳到 `/{slug}/`；多租户用户走 tenant picker |
+| Auth | 沿用现有 `app/gateway/auth/jwt.py` 自签 JWT；扩 `TokenPayload` 加 `tid` + `role` 字段、bump `ver` 触发旧 token 失效 |
 
 ---
 
@@ -51,7 +57,7 @@ ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最
 
 - **本地开发劝退**：每个开发者要起 `*.localtest.me` 之类的通配 DNS，Docker compose 的 nginx 也要改
 - **TLS 证书**：通配证书或 ACME 动态签证；自部署客户卡这一步
-- **Better Auth cookie 跨子域**：要走 `Domain=.deerflow.app`，scope 太宽，租户隔离反而变弱
+- **`access_token` cookie 跨子域**：要走 `Domain=.deerflow.app`，scope 太宽，租户隔离反而变弱
 - **CSRF 双重 cookie**：当前 csrf_middleware 假定同源；跨子域要改写
 
 **保留**作为 enterprise plan 的"自定义域名"功能（vanity domain），通过 `tenants.custom_domain` 解析回平台 tenant，但不作为默认。
@@ -71,7 +77,7 @@ ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最
 ```
 公开（不带租户）：
   /                       → 营销页
-  /login                  → Better Auth 登录页
+  /login                  → 登录页
   /signup
   /accept-invite/{token}
   /pricing
@@ -253,7 +259,7 @@ frontend/src/app/
 
 | 维度 | 决策 |
 |---|---|
-| Session cookie name | `deerflow_session`（不变） |
+| Session cookie name | `access_token`（沿用现状，HttpOnly） |
 | Path scope | `/`（不绑 tenant slug） |
 | Domain | 平台主域（不跨子域） |
 | SameSite | `Lax`（默认） |
@@ -268,17 +274,32 @@ frontend/src/app/
 
 ---
 
-## 8. Better Auth 接入
+## 8. Auth 改造（基于现有自签 JWT）
 
-Better Auth 当前配置（`frontend/src/server/auth/`）走单一 user 池。多租户化改：
+> 现状：`app/gateway/auth/jwt.py:14-19` `TokenPayload` 当前是 `{sub, exp, iat, ver}`；前端 cookie name 是 `access_token`；`users.token_version` 已存在，bump 该列即让所有旧 JWT 失效。
 
-1. **登录后落到 picker**：用户登录成功 → 检查 `tenant_memberships` 数量
+多租户化改造：
+
+1. **扩 `TokenPayload`**：
+   ```python
+   class TokenPayload(BaseModel):
+       sub: str           # user_id
+       tid: str           # tenant_id（新增）
+       role: str          # owner | admin | member（新增）
+       exp: int
+       iat: int
+       ver: int           # bump 即让所有旧 token 失效（沿用）
+   ```
+   `ver` 字段已经在用——任何 membership 变更（加入/退出/role 调整）都 bump `users.token_version`，下次请求 `access_token` 校验失败强制重新登录。
+2. **签发流程**：用户登录成功 → 检查 `tenant_memberships` 数量
    - 0 个：跳到 `/onboarding/create-tenant`（新用户首次登录）
-   - 1 个：直接跳到 `/{slug}/`，JWT 带该 tenant
-   - 多个：跳到 `/select-tenant`，让用户选；选后落 `users.default_tenant_id`
-2. **JWT 签发**：Better Auth 的默认 session token 不够——需要在 `session.fresh()` 后注入 `{ tid, role, tv }` claim。建议自定义 session cookie 或在 Better Auth 之上叠一层 `deerflow_session`（与 ADR-004 §5.2 一致）
-3. **SSO（v2）**：Better Auth 的 SAML/OIDC provider 已经支持组织化（`organization` plugin），后续接入时把 organization 等价映射到 tenant
-4. **Invitation 流程**：`/accept-invite/{token}` 路径下点击 → 校验 invitation → 自动 attach membership → 跳到 `/{new_slug}/`
+   - 1 个：直接签 `{tid=该 tenant.id, role=membership.role}`，跳 `/{slug}/`
+   - 多个：跳到 `/select-tenant` 让用户选；选后签对应 JWT，落 `users.default_tenant_id`
+3. **切换 tenant**：`POST /api/auth/switch-tenant` → 校验 membership → 重签 JWT 覆写 `access_token` cookie → 客户端硬刷新（§6.2）
+4. **SSO（v2）**：当前自签 JWT 模型可以直接配 SAML / OIDC provider，把外部 IdP 的 user/group 映射到 platform user + membership；不依赖 Better Auth，自由度更高
+5. **Invitation 流程**：`/accept-invite/{token}` 路径下点击 → 校验 invitation → 自动 attach membership + bump 用户 `token_version` → 跳到 `/{new_slug}/`
+
+**为什么不引入 Better Auth**：现有 JWT 实现已经有 `token_version` 失效机制 + cookie HttpOnly + CSRF 双重 cookie，扩 2 个字段比引入新 auth 框架的破坏面小得多。引入 Better Auth 反而要重写 `auth_middleware.py` + 前端 `core/auth/` + 所有 server actions 调用——工作量多 1 倍。
 
 ---
 
@@ -304,7 +325,7 @@ Better Auth 当前配置（`frontend/src/server/auth/`）走单一 user 池。�
 | `AuthMiddleware` path slug 解析 + 交叉校验 | 后端 | M |
 | `/api/auth/switch-tenant` 路由 | 后端 | S |
 | `/api/auth/me` 返回 tenant 列表 | 后端 | S |
-| Better Auth session 改造，注入 `tid/role/tv` | 后端 + 前端 | M |
+| `auth/jwt.py` `TokenPayload` 扩 `tid/role` 字段 + 签发流程 | 后端 | S |
 | 前端 `app/(tenant)/[slug]/layout.tsx` + Provider | 前端 | M |
 | 前端路由全部按 `(tenant)/[slug]/` 重组 | 前端 | L |
 | `useTenant()` hook + 所有 API 调用接入 | 前端 | M |
@@ -325,7 +346,7 @@ Better Auth 当前配置（`frontend/src/server/auth/`）走单一 user 池。�
 | slug 冲突（保留字 / 已注册） | 注册流程强制校验黑名单；冲突时返显建议 slug |
 | 浏览器分享 URL 给非成员看 | 后端 403，前端展示"申请加入"按钮 |
 | 切换 tenant 时 streams 没断干净导致看到上租户的 events | hard reload 兜底；E2E 测试 stream cancellation |
-| Better Auth 升级破坏 session 字段 | 锁版本；session 改造前先 fork 一份测 |
+| `TokenPayload` 字段升级导致旧 cookie 校验失败 | 加 fallback：旧 4 字段 token 视为"无 tenant 上下文"，强制走 `/select-tenant` 重发 |
 | 自定义域名灰区（DNS / TLS） | v2 才做，v1 不实现 |
 | `default_tenant_id` 被删除（成员被踢） | 登录时 fallback 到 memberships 第一个；都没了引导建租户 |
 | SEO 收录租户页 | 默认 `noindex`，租户开关启用公开页 |
@@ -336,7 +357,7 @@ Better Auth 当前配置（`frontend/src/server/auth/`）走单一 user 池。�
 
 - v2 决定走子域名优先 → §2 决策切到子域名 + 兼容老 path 形态 6 个月
 - 单页应用改成多页 / SSR 完整迁移 → 前端层重写，路由组结构会变
-- Better Auth 弃用 → 切换到自有 auth；JWT 部分不变
+- 决定改用 Better Auth / Auth.js 等成熟框架 → §8 重写为框架接入路径，但当前评估收益不抵迁移成本
 
 ---
 
