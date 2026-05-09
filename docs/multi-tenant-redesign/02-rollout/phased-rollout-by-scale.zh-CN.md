@@ -134,6 +134,9 @@
 | **多档付费分层** | Free / Pro / Team 三档；quota 按档次配；Stripe 多 product。 | — |
 | **团队 workspace invitation 流程** | `invitations` 表 + 邀请链接 + 邮件；新成员 join workspace 后 bump 用户 `token_version`。 | ADR-004 §5 |
 | **per-workspace MCP cache** | `mcp/cache.py` 模块单例 → `WorkspaceMCPCache` 类；OAuth token 落 KMS 加密 DB。 | ADR-006 §2.2 |
+| **per-user skill 覆盖** | 在 workspace 级 `tenant_skill_state` 之上加 `user_skill_overrides(workspace_id, user_id, skill_name, enabled)`。解析时 `final_enabled = user_override ?? workspace_default`。UI 仅在团队 workspace 显示"个人偏好"开关；1 人 workspace 隐藏。 | ADR-005 §5.4 扩展 |
+| **per-user skill config** | 新建 `user_skill_configs(workspace_id, user_id, skill_name, config_encrypted)`，KMS 加密。承载 skill 私有配置（API key、个人偏好等）——这部分不能共享。 | ADR-005 §5.4 + ADR-003 §4.1 |
+| **skill 上传权限收口** | workspace owner / admin 才能上传 skill 包；其他成员只能 enable/disable + 填自己的 config。 | ADR-004 §5.4 |
 | **内部 LLM 计费分类** | Memory/Title/Summarization 三类 LLM 调用都计入 workspace 用量，区分 `usage_category`。 | ADR-006 §2.5 |
 | **role 扩到 owner/admin/member** | 团队 workspace 出现 → RBAC 真正发挥作用；`@require_permission` 装饰器升级。 | ADR-004 §5.4 |
 | **基础 audit log** | 写入业务 DB（暂不拆分），关键操作（quota 改、role 改、删 workspace）记录。 | — |
@@ -155,7 +158,8 @@
 5. S3 实现 + 上传/产物迁移
 6. 多档付费 + invitation 流程 + role 扩展（这块可并行）
 7. WorkspaceMCPCache + OAuth token 加密
-8. 内部 LLM 计费分类
+8. **skill per-user 覆盖 + config 加密**（依赖 6 的 RBAC + 3 的 KMS）
+9. 内部 LLM 计费分类
 
 ### Go/No-Go 进入 Stage 3
 
