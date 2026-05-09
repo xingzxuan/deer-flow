@@ -17,10 +17,12 @@
 | Stage | 触发条件（业务事实） | 主旋律 | 时间盒 |
 |---|---|---|---|
 | **0** | 现在 → 第一个付费客户准备 | workspace 模型立起来；现有 auth 收紧；不做真隔离 | 3–4 周 |
-| **1** | 第一批付费客户（10–50 付费 / 500–2000 free） | **Postgres + Quota 必落**；workspace 全链路 + 入口强校验；AioSandbox 收紧 | 6–10 周 |
-| **2** | 增长期（100–500 付费 / 5k–20k 用户） | DeerFlow 表 RLS、KMS、ObjectStorage S3、内部 LLM 计费分类、付费分层 | 10–16 周 |
+| **1** | 第一批付费客户（10–50 付费 / 500–2000 free） + **1-2 业务系统集成（含自研 web 页面）** | **Postgres + Quota + Headless API（Pattern A backend 代理 + Pattern B browser 直连）必落**；workspace 全链路 + 入口强校验；AioSandbox 收紧 | 10–15 周 |
+| **2** | 增长期（100–500 付费 / 5k–20k 用户） | DeerFlow 表 RLS、KMS、ObjectStorage S3、内部 LLM 计费分类、付费分层、Webhook outbound | 10–16 周 |
 | **3** | 成熟期（1k+ 付费 / 50k+ 用户）**或** 出现安全/成本事故 | K8s sandbox + namespace、BYO key（付费档福利）、audit DB 拆分、prewarm 池 | 16–26 周 |
 | **4** | 单客户合同驱动（合规 / 企业销售） | SSO、custom domain、per-tenant DB（仅强合规） | 按需，单客户 4–8 周 |
+
+> **并行轨道**：Stage 1 同时承载"第一批付费 SaaS 客户"和"业务系统集成"两条产品线，共用 workspace + auth 基座；详见 [headless-api-track.zh-CN.md](./headless-api-track.zh-CN.md)。On-prem 部署形态在 Stage 0 schema 设计层面就已兼容，Stage 1 末加部署文档即可。
 
 **核心原则**：每期只做下一档规模真正逼出来的事；做了就不回头的"不可逆决策"集中在 Stage 0/1，避免后期重写。
 
@@ -39,6 +41,7 @@
 | **`workspaces` 表 + 自动建 1 人 workspace** | 每个新注册用户自动获得 1 个 workspace；用户 = workspace owner。这是后面所有租户改造的底座。 |
 | **`workspace_id` 列加到现有 SQLite 表** | `threads_meta` / `runs` / `feedback` / `users` 加 `workspace_id`。**不可逆决策**——SQLite 上加列后再迁 Postgres 比直接在 Postgres 上加痛苦得多。 |
 | **`workspace_memberships` 表** | 即使个人用户也是"1 个 owner 成员"，团队功能未启用但模型先就位。`role` 字段先只有 `owner`。 |
+| **`service_accounts` / `api_keys` / `external_users` schema** | Stage 1 才接路径，但 schema 在 Stage 0 末加上不阻塞——避免 Stage 1 临时改表。详见 [headless-api-track §2](./headless-api-track.zh-CN.md)。 |
 | **JWT 扩 `wid` 字段** | 沿用现有 `app/gateway/auth/jwt.py` `TokenPayload`（参 ADR-007 §8 修订版），加 `wid`（workspace_id），不引入 Better Auth。 |
 | **入口路由 `(workspace_id, thread_id)` 校验** | `threads.py` + `thread_runs.py` 入口处必校验（参 ADR-001 §4.1.2）。SQLite 阶段就上，避免 Stage 1 临时补。 |
 | **CLI / admin UI 的"workspace 管理"基础** | platform admin 能看 workspace 列表、暂停/删除某个 workspace（防止滥用第一时间反应）。 |
@@ -70,37 +73,64 @@
 
 ---
 
-## Stage 1 — 第一批付费客户（freemium 真上线）
+## Stage 1 — 第一批付费客户 + 业务系统集成
 
-**触发**：Stage 0 跑稳 + 拿到第一批付费用户（10–50 付费 / 500–2000 free）。
-**退出**：能放心让媒体/产品社区曝光，不会被白嫖跑偏。
-**时间盒**：6–10 周
+**触发**：Stage 0 跑稳 + 拿到第一批付费用户（10–50 付费 / 500–2000 free）+ 1-2 个业务系统集成需求。
+**退出**：① 能放心让媒体/产品社区曝光，不会被白嫖跑偏；② 业务系统能用 API key 调通核心 endpoint，go-live。
+**时间盒**：10–15 周（原稿 6–10 周；headless API Pattern A 加 2-3 周 + Pattern B 加 2 周）
 
-### 必做
+> Stage 1 是**双轨并行**：付费 SaaS（cookie auth + Stripe + quota）和 Headless API（bearer auth + service account + `/api/v1/`）。两者共用 workspace + auth + quota 基座。详细 headless API 设计见 [headless-api-track.zh-CN.md](./headless-api-track.zh-CN.md)。
+
+### 必做（付费 SaaS 轨道）
 
 | 改动 | 说明 | 关联 ADR |
 |---|---|---|
 | **Postgres 切换** | 老数据 `pg_loader` 导入；`workspace_id` 已就位（Stage 0 加过）。**不可逆**。 | ADR-001 §4.4 |
 | **Quota 系统 v1**（强制） | `workspace_quotas` + `workspace_usage_daily` 表；`QuotaMiddleware` 在 lead_agent 链最前；硬限到达拒调用。**Freemium 不上 quota = 信用卡递给攻击者**。 | ADR-003 §4.4 |
-| **`TokenUsageMiddleware` 持久化** | 当前只 log（参 audit ADR-003）；要写入 `workspace_usage_daily(workspace_id, date, model, tokens_in, tokens_out)`。 | ADR-003 §4.3 |
+| **`TokenUsageMiddleware` 持久化** | 当前只 log（参 audit ADR-003）；要写入 `workspace_usage_daily(workspace_id, date, model, tokens_in, tokens_out)`，按 SA / external_user 维度同时支持。 | ADR-003 §4.3 |
 | **悲观预扣**（轻量版） | 按 `model_max_input_tokens` 估上限；幽灵 token 防御。 | ADR-003 §4.4.1 |
 | **Stripe 对接（基础订阅）** | 单档付费先；webhook 同步到 `workspace_quotas.plan` 字段。 | — |
 | **AioSandbox 出网收紧** | egress 白名单（默认禁出网，按需放行）+ cgroup CPU/memory 限额。**不上 K8s**——AioSandbox 加这两个补丁就能撑到 Stage 3。 | ADR-002（轻量版） |
 | **Sandbox 资源 quota** | 每 workspace 的"沙箱 CPU 秒/月"也进 quota（防止白嫖跑挖矿）。 | ADR-003 §4.3 |
 | **基础监控** | per-workspace token 用量曲线、quota 命中率、异常用量告警。 | — |
 
+### 必做（Headless API 轨道 - Pattern A：业务 backend 代理）
+
+| 改动 | 说明 | 关联文档 |
+|---|---|---|
+| **API Key + Service Account 仓储** | `service_accounts` / `api_keys` 表（schema Stage 0 已加）+ 仓储 + 哈希存储。 | headless-api §2 |
+| **APIKeyAuthBackend + AuthMiddleware 双路径** | bearer 走 SA 路径、cookie 走 user 路径；CSRF middleware 在 bearer 路径 skip。 | headless-api §2 |
+| **External User ID 透传 + ghost user** | `external_users` 表（schema Stage 0 已加）+ `X-External-User-Id` header 解析；`identity_mode` 三态语义。 | headless-api §3 |
+| **`/api/v1/` 版本化** | mount prefix 切换；旧 `/api/*` 兼容转发并加 deprecation header。**早做便宜**。 | headless-api §4 |
+| **`@require_permission` 装饰器升级** | 同时支持 cookie user 路径和 SA + scope 校验；`owner_check` 扩为 enum（`workspace_or_user`）。 | headless-api §2 |
+| **Per-API-key rate limit（基础版）** | sliding window，存 Postgres；分档默认配 free/pro/team。 | headless-api §5 |
+| **API key 管理（CLI 优先 + UI 跟进）** | workspace owner / admin 创建 SA + key + 选 identity_mode；CLI 必有，UI 在前端 workspace settings 跟。 | headless-api §2 |
+| **Idempotency keys**（推荐） | 业务系统重试不重复建 thread/run。 | headless-api §5 |
+
+### 必做（Headless API 轨道 - Pattern B：自研 web 浏览器直连）
+
+| 改动 | 说明 | 关联文档 |
+|---|---|---|
+| **`POST /api/v1/auth/exchange-token` endpoint** | 业务系统 backend 用 API key + `external_user_id` 换 5-15 min 短期 JWT。 | headless-api §3.5 |
+| **`ServiceTokenAuthBackend`（AuthMiddleware 第三条路径）** | 验短期 JWT 签名 + `iss=deerflow,typ=service` + SA 当前状态 + scope 子集合法。 | headless-api §3.5 |
+| **`workspaces.allowed_origins` 列 + WorkspaceAwareCORSMiddleware** | per-workspace 配置允许的 origin；浏览器请求过 CORS preflight。 | headless-api §3.5 |
+| **SSE 在 CORS 跨域下的 streaming 验证** | 写一份业务方对接示例（HTML + 原生 EventSource） | headless-api §3.5 |
+
 ### 不做（推迟到 Stage 2+）
 
 - ❌ RLS — Stage 2（应用层 + 入口校验先撑着）
-- ❌ KMS — Stage 2（先用环境变量管理 key）
+- ❌ KMS — Stage 2（先用环境变量管理 key + 平台 key 散列入 DB）
 - ❌ ObjectStorage S3 — Stage 2（先继续本地文件 + 备份脚本）
 - ❌ K8s sandbox — Stage 3
 - ❌ BYO key — Stage 3（先全部用平台 key + quota）
 - ❌ 团队 invitation 流程 — Stage 2（除非有团队客户先到）
 - ❌ 多档付费 — Stage 2
+- ❌ Webhook outbound — Stage 2（先轮询）
+- ❌ 分维度 / 分档 rate limit — Stage 2
 
-### 关键 PR 顺序
+### 关键 PR 顺序（双轨）
 
+**轨道 A：付费 SaaS**
 1. Postgres 切换（dev 双驱动 → 生产灰度 → 全切）
 2. `workspace_quotas` / `workspace_usage_daily` 表 + 仓储
 3. `TokenUsageMiddleware` 升级为持久化（参 audit + ADR-003 §4.3）
@@ -108,6 +138,33 @@
 5. Stripe webhook + 订阅状态同步到 `workspace_quotas.plan`
 6. AioSandbox egress 白名单 + 资源限额
 7. 监控/告警接入
+
+**轨道 B：Headless API Pattern A**（与 A 并行；步骤 1-2 必须先完成轨道 A 的 1）
+1. `service_accounts` / `api_keys` / `external_users` 仓储（schema 已在 Stage 0 加上）
+2. `APIKeyAuthBackend` + `AuthMiddleware` 双路径（cookie + bearer）
+3. CSRF middleware skip on bearer
+4. `/api/v1/` mount prefix 切换 + 旧路径兼容转发
+5. `external_user_id` 透传机制
+6. `service_accounts.identity_mode` 三态行为分支
+7. `@require_permission` 升级 + scope 校验（依赖轨道 A 的 quota 完成）
+8. 基础 rate limit
+9. API key 管理 CLI + UI
+10. Idempotency keys（可选）
+
+**轨道 C：Headless API Pattern B**（依赖轨道 B 的 1-7 完成；建议 Stage 1 末 1-2 周）
+1. `workspaces.allowed_origins` 列 + workspace settings UI 的 origin 管理
+2. `WorkspaceAwareCORSMiddleware`（在 AuthMiddleware 之前）
+3. `POST /api/v1/auth/exchange-token` endpoint + `ServiceTokenPayload` 设计
+4. `ServiceTokenAuthBackend`（AuthMiddleware 第三条路径）
+5. SSE 跨域 streaming 验证 + 业务方对接示例（HTML + JS）
+
+### Go/No-Go 进入 Stage 2
+
+- 月活付费用户 ≥ 50 **或** 月活免费用户 ≥ 1000
+- 1-2 个业务系统集成完成 go-live 并稳定运行 ≥ 1 个月
+- 出现一次"差点超额"事件（quota 在悲观预扣下还是漏了一次）
+- 文件存储或 secret 管理出现一次手忙脚乱（备份遗漏 / key 误提交等）
+- 业务系统开始要求 webhook 推送（不再满足于轮询）
 
 ### Go/No-Go 进入 Stage 2
 
@@ -139,7 +196,9 @@
 | **skill 上传权限收口** | workspace owner / admin 才能上传 skill 包；其他成员只能 enable/disable + 填自己的 config。 | ADR-004 §5.4 |
 | **内部 LLM 计费分类** | Memory/Title/Summarization 三类 LLM 调用都计入 workspace 用量，区分 `usage_category`。 | ADR-006 §2.5 |
 | **role 扩到 owner/admin/member** | 团队 workspace 出现 → RBAC 真正发挥作用；`@require_permission` 装饰器升级。 | ADR-004 §5.4 |
-| **基础 audit log** | 写入业务 DB（暂不拆分），关键操作（quota 改、role 改、删 workspace）记录。 | — |
+| **基础 audit log** | 写入业务 DB（暂不拆分），关键操作（quota 改、role 改、删 workspace、API key 创建/吊销）记录。 | — |
+| **Webhook outbound** | `webhook_subscriptions` 表 + 重试机制；业务系统订阅 thread 完成 / run 失败 / quota 触底。Stage 1 推迟来的，此时业务系统已经开始要。 | headless-api §1 |
+| **API key 分维度 rate limit** | per-endpoint / per-LLM / per-sandbox 复合限速；引入 Redis。 | headless-api §5 |
 
 ### 不做（推迟到 Stage 3+）
 
@@ -255,14 +314,14 @@
 | Stage | 触发 | 时间盒 | 累计 |
 |---|---|---|---|
 | 0 | 现在 | 3–4 周 | 1 个月 |
-| 1 | 首批付费 | 6–10 周 | 4 个月 |
-| 2 | 增长期 | 10–16 周 | 8 个月 |
-| 3 | 成熟期 | 16–26 周 | 14 个月 |
+| 1 | 首批付费 + 业务系统集成（含自研 web 直连） | 10–15 周（headless API Pattern A+B 并行 4-5 周） | 4-5 个月 |
+| 2 | 增长期 | 10–16 周 | 8-9 个月 |
+| 3 | 成熟期 | 16–26 周 | 14-16 个月 |
 | 4 | 企业客户 | 单客户 4–8 周 | + 按需 |
 
-**全功能落地**：~14 个月（Stage 0–3 累计），不含 Stage 4 enterprise 特性。
-**最小可付费**（Stage 0 + 1）：~4 个月。
-**风险可控的增长**（Stage 0 + 1 + 2）：~8 个月。
+**全功能落地**：~14-16 个月（Stage 0–3 累计），不含 Stage 4 enterprise 特性。
+**最小可付费 + 业务系统集成**（Stage 0 + 1）：~4-5 个月。
+**风险可控的增长**（Stage 0 + 1 + 2）：~8-9 个月。
 
 ---
 
