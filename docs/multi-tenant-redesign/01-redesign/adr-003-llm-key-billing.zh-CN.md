@@ -2,10 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | 草稿（Draft） |
+| 状态 | 草稿（Draft） · 2026-05-09 据审计修订 §4.2 / §4.3 / §4.4.2（`create_chat_model` 是 sync、`TokenUsageMiddleware` 不持久化） |
 | 决策日期 | TBD |
 | 决策者 | 产品 + CTO + 财务 |
 | 关联 ADR | ADR-001 数据隔离、ADR-005 存储拓扑、ADR-006 运行时与渠道 |
+| 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) |
 
 ---
 
@@ -115,6 +116,8 @@ async def create_chat_model(
     return reflect(model_config.use)(api_key=api_key, ...)
 ```
 
+> **sync → async 的连带影响**：当前 `create_chat_model` 是同步函数（`models/factory.py:50`）。改成 async 后所有调用点（lead_agent factory、`MemoryMiddleware` / `TitleMiddleware` / `SummarizationMiddleware` 等）都要同步改 await——这是一次跨多个文件的改动，不是单点 patch。phase-1 实现时按"factory 改 async + 一次性扫所有调用点 await"作为单个 PR 落地，不要分批，避免中间态不可运行。
+
 ### 4.3 Quota 表与 Usage 表（ADR-005 已含）
 
 ```sql
@@ -138,7 +141,7 @@ tenant_usage_daily (
 
 写入时机：
 
-- token：现有 `TokenUsageMiddleware` 改造，写入按 (tenant_id, model, date) 累加
+- token：**当前 `TokenUsageMiddleware` 只 log 不持久化**（`agents/middlewares/token_usage_middleware.py:268-275`）；本 ADR 要求新增持久化路径，按 (tenant_id, model, date) 累加，并配合 `usage_category` 区分主对话 / 内部任务（参 ADR-006 §2.5）
 - 沙箱 CPU 秒：K8s metrics-server / Prometheus 抓取，每 5 min 聚合写入
 - 并发 runs：`RunManager` 启动/结束时增减计数器
 
@@ -188,7 +191,7 @@ tenant_usage_daily (
 
 #### 4.4.2 流式 token 的提交时机
 
-LangGraph SDK 的 `messages-tuple` 流模式按 chunk 推 delta。当前 `TokenUsageMiddleware` 在 `after_model` 一次性提交——多租户后这有两个隐患：
+LangGraph SDK 的 `messages-tuple` 流模式按 chunk 推 delta。当前 `TokenUsageMiddleware` 在 `after_model` 一次性 **log**（不持久化）——多租户加上持久化后，这有两个隐患：
 
 1. **客户端 abort 流时漏记**：用户关浏览器、SSE 断开 → middleware 没收到 `after_model` → token 漏算
 2. **provider 本身的 usage 帧晚到**：OpenAI/Anthropic 把 usage 放在最后一个 chunk；StreamBridge 必须在 finalizing 时强制等这一帧

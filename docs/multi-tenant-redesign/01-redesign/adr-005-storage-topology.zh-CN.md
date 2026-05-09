@@ -6,6 +6,7 @@
 | 决策日期 | TBD |
 | 决策者 | 架构 + 后端 lead + SRE |
 | 关联 ADR | ADR-001 数据隔离、ADR-002 沙箱隔离、ADR-006 运行时与渠道 |
+| 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) — 现状：`ObjectStorage` Protocol、7 张新表、KMS 抽象**全部不存在**，本 ADR 描述的是从 0 起的设计；phase-0 §3.5 已加"底座先行"骨架要求 |
 
 ---
 

@@ -14,7 +14,9 @@
 | [ADR-004 租户 ↔ 用户层级](./adr-004-tenant-rbac.zh-CN.md) | ADR | 产品 | 锁定二级 RBAC + JWT/cache 一致性策略 |
 | [ADR-005 存储拓扑](./adr-005-storage-topology.zh-CN.md) | ADR + ObjectStorage 接口签名 | 架构 + SRE | 锁定 DB / 对象存储 / 临时区分层 |
 | [ADR-006 运行时与渠道租户化](./adr-006-runtime-channel-tenancy.zh-CN.md) | ADR | 后端 lead + 渠道 owner | 锁定 checkpointer / MCP cache / skills loader / 内部 LLM 计费 / IM 渠道 ↔ 租户 |
-| [ADR-007 路由与前端租户化](./adr-007-routing-frontend.zh-CN.md) | ADR | 前端 lead + 后端 lead | 锁定 URL 形态 / cookie / Better Auth / SDK 切换 |
+| [ADR-007 路由与前端租户化](./adr-007-routing-frontend.zh-CN.md) | ADR | 前端 lead + 后端 lead | 锁定 URL 形态 / cookie / 自签 JWT 扩字段 / SDK 切换 |
+| [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) | 审计报告 | 架构 | 7 份 ADR 对照现状代码的差异清单（已据其修订 ADR-001/006/007） |
+| [adr-spike-langgraph-postgres](./adr-spike-langgraph-postgres.zh-CN.md) | spike 报告 | 架构 + 后端 lead | 验证 `langgraph-checkpoint-postgres==3.0.5` 的注入能力，结论改写 ADR-001 §4.1 / ADR-006 §2.1 |
 | Tenant 数据模型设计 | DB schema 草稿 + ER 图 | 后端 lead | 第 1 阶段直接落地用 |
 | 多租户改造代码盘点 | 表格 / spreadsheet | 后端 lead | 估工 + 拆 PR 用 |
 
@@ -91,8 +93,8 @@
 
 要点：
 
-- **LangGraph checkpointer**：保留原表结构，靠 `thread_id ∈ threads_meta(tenant_id=...)` 子查询 RLS 兜底；连接注入 `SET LOCAL app.tenant_id` 走自定义 connection factory。
-- **MCP 工具缓存**：模块级单例 → per-tenant LRU；OAuth token 从文件挪到 `tenant_secrets`。
+- **LangGraph checkpointer**：保留原表结构、**不挂 RLS、不 ALTER 表**——`langgraph-checkpoint-postgres==3.0.5` 不存在 `connection_factory`（spike 验证），改用入口路由（`threads.py` + `thread_runs.py`）强校验 + `threads_meta` `UNIQUE(tenant_id, thread_id)` 兜底。详见 ADR-001 §4.1.1。
+- **MCP 工具缓存**：模块级单例 → per-tenant LRU；OAuth token 当前**进程内存无持久化**，要直接做"持久化 + 加密 + 失败回退"三步并发到 `tenant_secrets`。
 - **Skills loader**：拆 platform 共享只读 + tenant 私有；按 `tenant_skill_state.enabled` 过滤工具。
 - **Sandbox provider**：实例单例，`acquire(thread_id)` 内按 tenant 路由到 K8s namespace；prewarm 池按 plan 大小。
 - **内部 LLM 计费**：Memory / Title / Summarization 调用都算 tenant 用量，分 `usage_category` 报表展示。
@@ -107,7 +109,7 @@
 - **URL 形态**：`/{slug}/...`，子域名留给 v2 自定义域名。
 - **Cookie**：`Path=/` + JWT 内 `tid`；切换 tenant 重签 JWT + 硬刷新。
 - **前端**：`app/(tenant)/[slug]/layout.tsx` 注入 `TenantProvider`；SDK 实例单例但调用读 `useTenant()`；切换时 `cancelAllStreams + window.location.assign`。
-- **Better Auth**：登录后跳 picker / 直进 / onboarding；session 注入 `{tid, role, tv}`。
+- **Auth**：扩现有 `app/gateway/auth/jwt.py` `TokenPayload` 加 `{tid, role}` 字段（沿用已有 `ver` 失效机制），不引入 Better Auth；登录后跳 picker / 直进 / onboarding。
 
 要点：
 
@@ -218,6 +220,22 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 
 ---
 
+## 3.5 底座先行（Phase-0 之前 / 并行的基础设施）
+
+> 来源：[adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) cross-cutting risk #2 — ADR-001 RLS、ADR-003 secret vault、ADR-005 三层存储、ADR-006 OAuth 持久化共用同一组缺失底座。这组**必须先于任何业务改造落地**，否则各 ADR 互为前置条件死锁。
+
+| 底座 | 缺失现状 | 为何阻塞 ADR | Phase-0 内必须产出 |
+|---|---|---|---|
+| **Postgres 测试夹具**（testcontainers + RLS smoke 测试基础设施） | 仓库当前以 SQLite 为默认后端，`tests/` 下无 Postgres fixture；SQLite 不支持 RLS | ADR-001 / 004 / 005 的所有租户隔离测试都要 Postgres | testcontainers 集成 + 至少 1 个 RLS 冒烟测试模板 + CI 跑通 |
+| **ObjectStorage Protocol + 实现** | `backend/packages/harness/deerflow/` 内 grep 不到 `ObjectStorage` 类；当前 memory/uploads/artifacts 全走文件系统 | ADR-005 §2 的三层拓扑、ADR-006 §2.2 的 OAuth 持久化都依赖它 | Protocol 接口 + LocalObjectStorage 骨架（可不实现 S3，留接口） |
+| **KMS / Secret Vault 抽象** | 当前没有 secret 加密层；`mcp/oauth.py` 的 token 是明文进程内存 | ADR-003 §4.6 BYO key、ADR-006 §2.2 MCP OAuth、ADR-007 channel binding token 共用 | 抽象接口（envelope encryption pattern）+ 本地 dev 实现（明文 fallback + 警告日志），生产实现可推迟 |
+
+**时间盒**：3 项底座**与 ADR 评审并行做**，加 1 周到 Phase-0（总计 3 周封顶）。完成验证标准是这 3 件事**至少有可 CI 验证的最小骨架**——不要求 100% 实现，但接口 + 1 个测试用例必须跑通。
+
+> 这部分原稿没列。审计后补的。如果跳过这步直接做业务改造，ADR-001/003/005/006 实现时会发现互相依赖、谁都跑不起来。
+
+---
+
 ## 4. 第 0 阶段的"完成定义" (DoD)
 
 走完这阶段，团队应该能回答：
@@ -229,6 +247,7 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 - [ ] Skill / agent / 上传 / 产物 / memory 各自存哪、丢失怎么办 → ADR-005 给出
 - [ ] LangGraph / MCP / 内部 LLM / IM 渠道这些"夹层"怎么按租户隔离 → ADR-006 给出
 - [ ] 浏览器地址栏长什么样、Cookie 怎么 scope、租户切换怎么走 → ADR-007 给出
+- [ ] **3 项底座**（Postgres 测试夹具 / ObjectStorage Protocol / KMS 抽象）有可 CI 验证的最小骨架 → §3.5 给出
 - [ ] 第一阶段 PR 怎么拆、估几人周 → 代码盘点给出
 - [ ] 第一个内测客户长什么样、什么时候能上 → 项目经理排期
 
@@ -236,12 +255,13 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 
 ## 5. 时间盒与节奏
 
-第 0 阶段 **两周封顶**，再长就是过度设计。
+第 0 阶段 **三周封顶**（原稿两周，加 §3.5 底座先行的 1 周），再长就是过度设计。
 
-- **第 1 周**：写 ADR-001/002/003/004 草稿，团队读、challenge、收敛
-- **第 2 周**：定 schema、做代码盘点、估工、定第一阶段范围与 design partner 客户
+- **第 1 周**：写 ADR-001 ~ 007 草稿，团队读、challenge、收敛
+- **第 2 周**：定 schema、做代码盘点、估工、定第一阶段范围与 design partner 客户；同时启动 §3.5 底座 spike（Postgres testcontainers / ObjectStorage Protocol / KMS 抽象）
+- **第 3 周**：底座骨架 PR 合入 + ADR 据实测结果定稿（这一周已经在审计 + spike 中部分提前消耗，参见 [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) 与 [adr-spike-langgraph-postgres](./adr-spike-langgraph-postgres.zh-CN.md)）
 
-如果两周后还有 ADR 定不下来，**绝大多数情况是因为缺一个真实客户做参照**——这时候应该先去签一个 design partner（哪怕免费），用他们的合同和合规要求来反推决策。
+如果三周后还有 ADR 定不下来，**绝大多数情况是因为缺一个真实客户做参照**——这时候应该先去签一个 design partner（哪怕免费），用他们的合同和合规要求来反推决策。
 
 ---
 
@@ -251,7 +271,7 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 
 | 决策 | 默认值 | 选它的理由 |
 |---|---|---|
-| 数据隔离 | 行级 + Postgres RLS（含 LangGraph 表 subquery RLS） | 改造成本低，DeerFlow 现状几乎平行扩展 |
+| 数据隔离 | 行级 + Postgres RLS（仅 DeerFlow 自有表）+ LangGraph 表应用层强校验 | 改造成本低；LangGraph 表无 RLS hook（spike 已验证），应用层兜底 |
 | 沙箱隔离 | K8s namespace + gVisor + NetworkPolicy 默认禁出网 | 强度足够 + 运维可控 |
 | LLM Key | 混合：默认平台 key + 限额，premium 切 BYO；悲观预扣防超额 | 体验与成本兼顾 |
 | 租户层级 | 二级 RBAC（owner/admin/member）+ JWT/cache 双层 | 为 SSO 和企业销售留口 |

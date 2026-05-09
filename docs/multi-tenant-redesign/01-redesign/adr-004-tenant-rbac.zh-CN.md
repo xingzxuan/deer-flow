@@ -6,6 +6,7 @@
 | 决策日期 | TBD |
 | 决策者 | 产品 + 后端 lead |
 | 关联 ADR | ADR-001 数据隔离、ADR-003 LLM Key 与计费 |
+| 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) — 现状：`users.token_version` + JWT `ver` claim 已存在；`@require_permission` 装饰器存在但 `owner_check` 是 bool 需扩为 enum；`MembershipCache` 30s LRU 全新建 |
 
 ---
 

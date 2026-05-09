@@ -6,6 +6,7 @@
 | 决策日期 | TBD |
 | 决策者 | 安全 + 架构 + SRE |
 | 关联 ADR | ADR-001 数据隔离、ADR-005 存储拓扑 |
+| 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) — 注意：现有 `AioSandboxProvider` 出网/资源/cosign 缺位；K8sSandboxProvider 几乎从零开工（实际工作量大于本 ADR §5 估算） |
 
 ---
 
