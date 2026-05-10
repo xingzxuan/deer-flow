@@ -7,6 +7,7 @@
 | 决策者 | 安全 + 架构 + SRE |
 | 关联 ADR | ADR-001 数据隔离、ADR-005 存储拓扑 |
 | 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) — 注意：现有 `AioSandboxProvider` 出网/资源/cosign 缺位；K8sSandboxProvider 几乎从零开工（实际工作量大于本 ADR §5 估算） |
+| 代码命名 | 本 ADR 写 `tenant_id` / `tenant-{tenant_id}` namespace，落代码统一读作 `workspace_id` / `ws-{workspace_id}`（详 [workspace-schema-design §1](./workspace-schema-design.zh-CN.md#1-命名约定--workspace-vs-tenant)） |
 
 ---
 
@@ -100,6 +101,13 @@ spec:
 ---
 
 ## 1. 背景
+
+> **分期落地提示**：本 ADR 描述的 K8s + gVisor + NetworkPolicy 全套架构是**目标态**。按 [phased-rollout-by-scale](../02-rollout/phased-rollout-by-scale.zh-CN.md) 实际落地节奏：
+> - **Stage 1**：仅做 §3 威胁模型的"出网默认禁 + cgroup CPU/memory 限额"，落到现有 `AioSandboxProvider` 上（轻量补丁版）。**不上 K8s**。
+> - **Stage 3**：才换 `K8sSandboxProvider`，引入 namespace + gVisor + NetworkPolicy + Pod Security Standard 全套（§5 全文落地）。
+> - **Stage 4 / premium**：按合同切 Kata-Firecracker 或独立 nodepool。
+>
+> 读 §2~§9 时把它当作"Stage 3 完成态"，Stage 1 落地时只摘 §3 出网/资源那两行就好。
 
 沙箱是多租户里**爆炸半径最大**的组件：客户的 agent 可以跑任意 bash 命令、读写文件、调用 MCP 工具。如果隔离不够强，一个客户能：
 

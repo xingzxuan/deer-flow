@@ -7,6 +7,7 @@
 | 决策者 | 产品 + CTO + 财务 |
 | 关联 ADR | ADR-001 数据隔离、ADR-005 存储拓扑、ADR-006 运行时与渠道 |
 | 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) |
+| 代码命名 | 本 ADR 写 `tenant_*` 表 / `tenant_id` 列，落代码统一读作 `workspace_*` / `workspace_id`（详 [workspace-schema-design §1](./workspace-schema-design.zh-CN.md#1-命名约定--workspace-vs-tenant)） |
 
 ---
 

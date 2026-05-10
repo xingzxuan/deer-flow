@@ -7,6 +7,7 @@
 | 决策者 | CTO + 架构 + 后端 lead |
 | 关联 ADR | ADR-004 租户层级、ADR-005 存储拓扑、ADR-006 运行时与渠道 |
 | 关联 spike / 审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) · [langgraph-postgres spike](./adr-spike-langgraph-postgres.zh-CN.md) |
+| 代码命名 | 本 ADR 写 `tenant_id`，落代码统一读作 `workspace_id`（详 [workspace-schema-design §1](./workspace-schema-design.zh-CN.md#1-命名约定--workspace-vs-tenant)） |
 
 ---
 

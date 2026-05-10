@@ -7,6 +7,7 @@
 | 决策者 | 架构 + 后端 lead + SRE |
 | 关联 ADR | ADR-001 数据隔离、ADR-002 沙箱隔离、ADR-006 运行时与渠道 |
 | 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) — 现状：`ObjectStorage` Protocol、7 张新表、KMS 抽象**全部不存在**，本 ADR 描述的是从 0 起的设计；phase-0 §3.5 已加"底座先行"骨架要求 |
+| 代码命名 | 本 ADR 写 `tenants/{tid}/...` prefix 与 `tenant_*` 表名，落代码统一读作 `workspaces/{wid}/...` 与 `workspace_*`（详 [workspace-schema-design §1](./workspace-schema-design.zh-CN.md#1-命名约定--workspace-vs-tenant)） |
 
 ---
 
@@ -289,9 +290,11 @@ storage:
 
 ## 5. 落地改造点（实施清单）
 
-按优先级排序，每条对应第 1 阶段或第 2 阶段的一个 PR：
+按优先级排序，每条对应一个 PR。
 
-### 第 1 阶段（必须）
+> **分期映射**（与 [phased-rollout-by-scale](../02-rollout/phased-rollout-by-scale.zh-CN.md) 对齐）：本 §5 的"第 1 阶段"≈ rollout 的 **Stage 2**（KMS + ObjectStorage + RLS 同期落地）；"第 2 阶段"≈ rollout 的 **Stage 3**。Stage 0 / Stage 1 仅复用现有本地文件系统，不动 storage 拓扑。
+
+### 第 1 阶段（必须；对应 rollout Stage 2）
 
 1. **抽象 `ObjectStorage` 接口 + `LocalObjectStorage` 实现** — 走通端到端，开发/测试用本地目录跑，不阻塞迁移
 2. **memory.json 迁库**
@@ -339,7 +342,7 @@ storage:
 
    **估工**：原 ADR-005 列了 1 条 bullet 偏乐观；这块包含 c/d/e/f 四子项，**整体约 M 偏 L**（一周量级），不是 S。
 
-### 第 1 阶段 / 第 2 阶段交界
+### 第 1 阶段 / 第 2 阶段交界（rollout Stage 2 末 / Stage 3 头）
 
 5. **`S3ObjectStorage` 实现** — 用 aioboto3，覆盖 protocol 全部方法
 6. **上传文件改 presigned 直传**
@@ -353,7 +356,7 @@ storage:
    - `POST /api/skills/install`：把 .skill 上传到 S3（带 SHA256 metadata），不再解压到本地全局目录
    - 启动时按 tenant skill list 从 S3 拉 + 校验 + 解压到 LRU 缓存
 
-### 第 2 阶段（建议）
+### 第 2 阶段（建议；对应 rollout Stage 3）
 
 9. **退订 GC**：tenant 标记 deleted 后，30 天定时任务跑 `delete_prefix(f"tenants/{tid}/")` + DB cascade delete
 10. **跨区域复制 / CDN**：按客户分布加 region replica 或 CloudFront / OSS 加速域名

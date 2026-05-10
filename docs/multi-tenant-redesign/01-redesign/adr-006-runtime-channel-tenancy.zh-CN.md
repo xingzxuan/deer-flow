@@ -7,6 +7,7 @@
 | 决策者 | 后端 lead + 架构 + 渠道 owner |
 | 关联 ADR | ADR-001 数据隔离、ADR-003 LLM Key 与计费、ADR-005 存储拓扑 |
 | 关联 spike / 审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) · [langgraph-postgres spike](./adr-spike-langgraph-postgres.zh-CN.md) |
+| 代码命名 | 本 ADR 写 `tenant_id` / `TenantMCPCache` / `tenant-{tenant_id}` namespace，落代码统一读作 `workspace_id` / `WorkspaceMCPCache` / `ws-{workspace_id}`（详 [workspace-schema-design §1](./workspace-schema-design.zh-CN.md#1-命名约定--workspace-vs-tenant)） |
 
 ---
 

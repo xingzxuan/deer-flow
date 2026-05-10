@@ -226,7 +226,7 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 
 | 底座 | 缺失现状 | 为何阻塞 ADR | Phase-0 内必须产出 |
 |---|---|---|---|
-| **Postgres 测试夹具**（testcontainers + RLS smoke 测试基础设施） | 仓库当前以 SQLite 为默认后端，`tests/` 下无 Postgres fixture；SQLite 不支持 RLS | ADR-001 / 004 / 005 的所有租户隔离测试都要 Postgres | testcontainers 集成 + 至少 1 个 RLS 冒烟测试模板 + CI 跑通 |
+| **Postgres 切换 + testcontainers 夹具**（生产 + 测试基础设施一并落） | 仓库当前以 SQLite 为默认后端，`tests/` 下无 Postgres fixture；SQLite 不支持 RLS | ADR-001 / 004 / 005 的所有租户隔离测试都要 Postgres；Stage 0 ALTER 4 张表如果在 SQLite 上做完再切 PG 是纯返工 | **Stage 0 直接切 Postgres 为生产默认**（Stage 0 没有生产数据，迁移阻力最小）+ testcontainers 集成 + 至少 1 个 RLS 冒烟测试模板（policy Stage 2 才启用，但夹具 Stage 0 就位）+ CI 跑通 |
 | **ObjectStorage Protocol + 实现** | `backend/packages/harness/deerflow/` 内 grep 不到 `ObjectStorage` 类；当前 memory/uploads/artifacts 全走文件系统 | ADR-005 §2 的三层拓扑、ADR-006 §2.2 的 OAuth 持久化都依赖它 | Protocol 接口 + LocalObjectStorage 骨架（可不实现 S3，留接口） |
 | **KMS / Secret Vault 抽象** | 当前没有 secret 加密层；`mcp/oauth.py` 的 token 是明文进程内存 | ADR-003 §4.6 BYO key、ADR-006 §2.2 MCP OAuth、ADR-007 channel binding token 共用 | 抽象接口（envelope encryption pattern）+ 本地 dev 实现（明文 fallback + 警告日志），生产实现可推迟 |
 
@@ -271,7 +271,8 @@ grep -rn "extensions_config\|skills/public\|skills/custom" backend/
 
 | 决策 | 默认值 | 选它的理由 |
 |---|---|---|
-| 数据隔离 | 行级 + Postgres RLS（仅 DeerFlow 自有表）+ LangGraph 表应用层强校验 | 改造成本低；LangGraph 表无 RLS hook（spike 已验证），应用层兜底 |
+| **数据库** | Stage 0 起直接切 Postgres 为生产默认；SQLite 仅保留为可选 dev 兜底 | Stage 0 没有生产数据，迁移阻力最小；省 Stage 1 重 ALTER 一遍的返工 |
+| 数据隔离 | 行级 + Postgres RLS（仅 DeerFlow 自有表，policy Stage 2 启用）+ LangGraph 表应用层强校验 | 改造成本低；LangGraph 表无 RLS hook（spike 已验证），应用层兜底 |
 | 沙箱隔离 | K8s namespace + gVisor + NetworkPolicy 默认禁出网 | 强度足够 + 运维可控 |
 | LLM Key | 混合：默认平台 key + 限额，premium 切 BYO；悲观预扣防超额 | 体验与成本兼顾 |
 | 租户层级 | 二级 RBAC（owner/admin/member）+ JWT/cache 双层 | 为 SSO 和企业销售留口 |

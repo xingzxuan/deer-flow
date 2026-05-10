@@ -3,7 +3,7 @@
 > 写于 2026-05-09。承接 [phased-rollout-by-scale.zh-CN.md](./phased-rollout-by-scale.zh-CN.md)。
 >
 > **触发**：现已有 1-2 个明确的业务系统集成需求，1-3 个月内要 demo / 调通。集成形态包括 IM channels（已支持）+ 业务系统自研 web 页面。
-> **商业形态**：SaaS + on-prem 双主线。
+> **商业形态**：与 [phased-rollout-by-scale §0](./phased-rollout-by-scale.zh-CN.md) 一致——**中心化 SaaS 主线**；schema / auth / quota 设计对 on-prem 友好（`workspaces.id` 映射到 self-host 安装），但 on-prem 不作为产品主线，仅按客户合同启用。
 > **身份模式**：service account 折叠 + external_user_id 透传，两种都支持，按 endpoint 选。
 > **集成 pattern**：**Pattern A（业务系统 backend 代理）+ Pattern B（浏览器直连 + 短期 JWT）**。不做嵌入式 widget。
 
@@ -433,14 +433,13 @@ SELECT idempotency_records WHERE (api_key_id, key=...) AND created_at > NOW() - 
 
 ## 6. 与 Stage 1 的整合
 
-把 headless API MVP 包并入 Stage 1，**时间盒从 6-10 周延到 8-13 周**。
+把 headless API MVP 包并入 Stage 1，**时间盒 8-13 周**（Postgres 切换已前移到 Stage 0，原"6-10 周 + 4-5 周 headless = 10-15"减去 Postgres 的 ~2 周）。
 
 ### 修订后 Stage 1 必做项
 
 | 改动 | 类型 | 估工 |
 |---|---|---|
-| Postgres 切换 | 原 Stage 1 | M |
-| Quota 系统 + TokenUsage 持久化 | 原 Stage 1 | M+ |
+| Quota 系统 + TokenUsage 持久化 | 原 Stage 1（Postgres 已就绪） | M+ |
 | Stripe 基础订阅 | 原 Stage 1 | M |
 | AioSandbox 出网/资源收紧 | 原 Stage 1 | M |
 | **API Key + Service Account 数据模型 + 仓储** | **新增（Pattern A）** | M |
@@ -456,20 +455,19 @@ SELECT idempotency_records WHERE (api_key_id, key=...) AND created_at > NOW() - 
 | **`workspaces.allowed_origins` + CORS 中间件** | **新增（Pattern B）** | M |
 | **Idempotency keys** | **可选**（推荐） | S |
 
-合计原 Stage 1（M+M++M+M=4M）+ 新增 Pattern A（M+M+XS+M+S+S+S+S=4M）+ 新增 Pattern B（S+S+M=2M）= 约 10M-15 周。Pattern B 依赖 Pattern A 完成，建议放 Stage 1 末。
+合计原 Stage 1 不含 Postgres（M+M+M=3M）+ 新增 Pattern A（M+M+XS+M+S+S+S+S=4M）+ 新增 Pattern B（S+S+M=2M）= 约 9M ≈ 8-13 周。Pattern B 依赖 Pattern A 完成，建议放 Stage 1 末。
 
 ### 修订后 Stage 1 PR 顺序
 
-**轨道一：付费 SaaS 基础**（与下面并行）
-1. Postgres 切换（dev → 灰度 → 全切）
-2. `workspace_quotas` / `workspace_usage_daily` 表 + 仓储
-3. `TokenUsageMiddleware` 升级为持久化
-4. `QuotaMiddleware` 加入中间件链
-5. Stripe webhook + 订阅状态同步
-6. AioSandbox 收紧
-7. 基础监控
+**轨道一：付费 SaaS 基础**（Postgres 已在 Stage 0 切完，本轨道直接从 quota 起）
+1. `workspace_quotas` / `workspace_usage_daily` 表 + 仓储
+2. `TokenUsageMiddleware` 升级为持久化
+3. `QuotaMiddleware` 加入中间件链
+4. Stripe webhook + 订阅状态同步
+5. AioSandbox 收紧
+6. 基础监控
 
-**轨道二：Headless API Pattern A**（与轨道一并行；步骤 1 必须先完成轨道一的 1）
+**轨道二：Headless API Pattern A**（与轨道一并行；无前置依赖）
 1. `service_accounts` + `api_keys` + `external_users` 仓储（**先于业务路径**）
 2. `APIKeyAuthBackend` + `AuthMiddleware` 双路径（cookie + bearer）
 3. CSRF middleware skip on bearer
@@ -491,9 +489,11 @@ SELECT idempotency_records WHERE (api_key_id, key=...) AND created_at > NOW() - 
 
 ---
 
-## 7. SaaS vs on-prem 差异
+## 7. SaaS vs on-prem 差异（SaaS 是主线）
 
-| 能力 | SaaS 形态 | on-prem 形态 |
+> **口径**：phased-rollout §0 已明确"中心化 SaaS 主线，不做 self-host 主线"。本节列出**如果**未来按客户合同启用 on-prem 时的差异点——目的是让 Stage 0/1 的 schema 与 auth 设计**不阻塞** on-prem，而不是把 on-prem 当作并行产品线投入资源。
+
+| 能力 | SaaS 形态 | on-prem 形态（按合同启用） |
 |---|---|---|
 | API key 管理 | workspace settings UI + CLI | CLI 必须；UI 可选；env var 注入预置 key 也合理 |
 | 配额 / 计费 | 按 plan，Stripe 同步 | 配额作为容量管理（防内部失控），不接 Stripe |

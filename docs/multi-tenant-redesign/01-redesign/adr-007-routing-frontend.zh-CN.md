@@ -7,6 +7,7 @@
 | 决策者 | 前端 lead + 后端 lead + 产品 |
 | 关联 ADR | ADR-001 数据隔离、ADR-004 RBAC、ADR-006 运行时与渠道 |
 | 关联审计 | [adr-vs-code-audit](./adr-vs-code-audit.zh-CN.md) |
+| 代码命名 | 本 ADR 写 `tenant_id` / JWT `tid`，落代码统一读作 `workspace_id` / JWT `wid`（详 [workspace-schema-design §1, §4](./workspace-schema-design.zh-CN.md)） |
 
 ---
 
@@ -107,11 +108,14 @@ ADR-001 ~ 006 锁定了数据/沙箱/Key/RBAC/存储/运行时——但客户最
 API 路径**不带 slug**：
 
 ```
-/api/...                                  # 业务 API（tenant 由 JWT 决定）
-/api/langgraph/threads/{tid}/runs/stream  # LangGraph 兼容
+/api/v1/...                               # 业务 API（tenant 由 JWT / API key 决定；Stage 1 起强制带版本）
+/api/...                                  # 旧路径，Stage 1 起转发到 /api/v1，Stage 3 sunset
+/api/langgraph/threads/{tid}/runs/stream  # LangGraph 兼容（不带版本，跟随上游 SDK 约定）
 ```
 
 理由：API 是 SDK 调用的，不需要人类可读 URL；slug 只在浏览器导航/分享时有意义。
+
+**`/api/v1/` 引入时机与设计**：详见 [headless-api-track §4](../02-rollout/headless-api-track.zh-CN.md#4-核心设计api-版本化) —— Stage 1 切换 mount prefix、保留旧路径转发并加 `X-API-Deprecated` header。
 
 ---
 
@@ -277,14 +281,16 @@ frontend/src/app/
 ## 8. Auth 改造（基于现有自签 JWT）
 
 > 现状：`app/gateway/auth/jwt.py:14-19` `TokenPayload` 当前是 `{sub, exp, iat, ver}`；前端 cookie name 是 `access_token`；`users.token_version` 已存在，bump 该列即让所有旧 JWT 失效。
+>
+> **代码字段名以 [workspace-schema-design §4](./workspace-schema-design.zh-CN.md#4-jwt-tokenpayload--一次到位的字段集) 为准**：本 ADR 写 `tid`、落代码写 `wid`（同义）。Stage 0 PR2 已锁定 `wid` 命名 + Stage 0 一次性加齐 `wid` + `role` 两字段，避免 Stage 2 再 bump `token_version` 导致全用户重登。
 
 多租户化改造：
 
-1. **扩 `TokenPayload`**：
+1. **扩 `TokenPayload`**（字段名以 workspace-schema-design §4 为准）：
    ```python
    class TokenPayload(BaseModel):
        sub: str           # user_id
-       tid: str           # tenant_id（新增）
+       tid: str           # tenant_id（新增；落代码读作 wid / workspace_id）
        role: str          # owner | admin | member（新增）
        exp: int
        iat: int

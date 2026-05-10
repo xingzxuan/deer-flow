@@ -16,8 +16,8 @@
 
 | Stage | 触发条件（业务事实） | 主旋律 | 时间盒 |
 |---|---|---|---|
-| **0** | 现在 → 第一个付费客户准备 | workspace 模型立起来；现有 auth 收紧；不做真隔离 | 3–4 周 |
-| **1** | 第一批付费客户（10–50 付费 / 500–2000 free） + **1-2 业务系统集成（含自研 web 页面）** | **Postgres + Quota + Headless API（Pattern A backend 代理 + Pattern B browser 直连）必落**；workspace 全链路 + 入口强校验；AioSandbox 收紧 | 10–15 周 |
+| **0** | 现在 → 第一个付费客户准备 | workspace 模型立起来；**Postgres 切换**；现有 auth 收紧；不做真隔离 | 4–5 周 |
+| **1** | 第一批付费客户（10–50 付费 / 500–2000 free） + **1-2 业务系统集成（含自研 web 页面）** | **Quota + Headless API（Pattern A backend 代理 + Pattern B browser 直连）必落**；workspace 全链路 + 入口强校验；AioSandbox 收紧 | 8–13 周 |
 | **2** | 增长期（100–500 付费 / 5k–20k 用户） | DeerFlow 表 RLS、KMS、ObjectStorage S3、内部 LLM 计费分类、付费分层、Webhook outbound | 10–16 周 |
 | **3** | 成熟期（1k+ 付费 / 50k+ 用户）**或** 出现安全/成本事故 | K8s sandbox + namespace、BYO key（付费档福利）、audit DB 拆分、prewarm 池 | 16–26 周 |
 | **4** | 单客户合同驱动（合规 / 企业销售） | SSO、custom domain、per-tenant DB（仅强合规） | 按需，单客户 4–8 周 |
@@ -28,29 +28,30 @@
 
 ---
 
-## Stage 0 — workspace 模型立起来 + auth 收紧
+## Stage 0 — workspace 模型立起来 + Postgres 切换 + auth 收紧
 
 **触发**：你现在所在的位置——刚把 ADR 收敛完，准备开第一个付费客户。
-**退出**：能给一个外部用户开账号，他登进来看到自己的 workspace、能创建 thread、隔离干净。
-**时间盒**：3–4 周
+**退出**：能给一个外部用户开账号，他登进来看到自己的 workspace、能创建 thread、隔离干净；生产已跑在 Postgres 上。
+**时间盒**：4–5 周（原 3–4 周；Postgres 切换 + testcontainers + 部署/onboarding 调整加 1 周）
 
 ### 必做
 
 | 改动 | 说明 |
 |---|---|
+| **Postgres 切换**（dev + 生产）| **不可逆决策**——Stage 0 没有生产数据，迁移阻力最小；现在切完省掉 Stage 1 重 ALTER 一遍的返工。`init_engine_from_config` 已支持双驱动，docker-compose 加 PG service、`make setup`/`make doctor`/CI 切默认。**这是 §3.5 底座先行的成果落地**，不是单独 spike。 |
+| **Postgres testcontainers + RLS 测试夹具骨架** | phase-0 §3.5 底座之一；CI 跑通至少 1 个 RLS 冒烟测试模板（Stage 0 还没用 RLS，但夹具就位） |
 | **`workspaces` 表 + 自动建 1 人 workspace** | 每个新注册用户自动获得 1 个 workspace；用户 = workspace owner。这是后面所有租户改造的底座。 |
-| **`workspace_id` 列加到现有 SQLite 表** | `threads_meta` / `runs` / `feedback` / `users` 加 `workspace_id`。**不可逆决策**——SQLite 上加列后再迁 Postgres 比直接在 Postgres 上加痛苦得多。 |
+| **`workspace_id` 列加到现有表**（直接在 Postgres 上加）| `threads_meta` / `runs` / `feedback` / `users` 加 `workspace_id`。**不可逆决策**——直接在 Postgres 上 ALTER 一次，不再走 SQLite → Postgres 二次迁移。 |
 | **`workspace_memberships` 表** | 即使个人用户也是"1 个 owner 成员"，团队功能未启用但模型先就位。`role` 字段先只有 `owner`。 |
 | **`service_accounts` / `api_keys` / `external_users` schema** | Stage 1 才接路径，但 schema 在 Stage 0 末加上不阻塞——避免 Stage 1 临时改表。详见 [headless-api-track §2](./headless-api-track.zh-CN.md)。 |
 | **JWT 扩 `wid` 字段** | 沿用现有 `app/gateway/auth/jwt.py` `TokenPayload`（参 ADR-007 §8 修订版），加 `wid`（workspace_id），不引入 Better Auth。 |
-| **入口路由 `(workspace_id, thread_id)` 校验** | `threads.py` + `thread_runs.py` 入口处必校验（参 ADR-001 §4.1.2）。SQLite 阶段就上，避免 Stage 1 临时补。 |
+| **入口路由 `(workspace_id, thread_id)` 校验** | `threads.py` + `thread_runs.py` 入口处必校验（参 ADR-001 §4.1.2）。Stage 0 就上，避免 Stage 1 临时补。 |
 | **CLI / admin UI 的"workspace 管理"基础** | platform admin 能看 workspace 列表、暂停/删除某个 workspace（防止滥用第一时间反应）。 |
 | **现有 auth 完善** | setup flow 能创建第一个 admin、邀请用户走基本流程（不必 invitation token，可手动建账号）。`token_version` 已存在，复用。 |
 
 ### 不做（推迟到 Stage 1+）
 
-- ❌ Postgres 切换 — Stage 1
-- ❌ RLS — Stage 2
+- ❌ RLS policy 启用 — Stage 2（夹具 Stage 0 就位，但 policy 不上）
 - ❌ Quota 系统 — Stage 1（早一点也行，但有了第一个付费客户再做反应快）
 - ❌ K8s sandbox — Stage 3
 - ❌ KMS / ObjectStorage S3 — Stage 2
@@ -59,17 +60,20 @@
 
 ### 关键 PR 顺序（避免半截不可运行）
 
-1. `workspaces` + `workspace_memberships` 表 + 仓储
-2. 注册流程改造（自动建 1 人 workspace）+ JWT 扩 `wid`
-3. 现有表 ALTER 加 `workspace_id` 列 + 数据回填脚本（"legacy_workspace"）
-4. `threads.py` / `thread_runs.py` 入口校验 + 迁移所有现有 thread 到对应 workspace
-5. CI boundary 测试：禁止任何路径绕过入口直连 LangGraph saver
+1. **Postgres 接入 + testcontainers**：docker-compose 加 PG、`make doctor` 兼容、CI 跑通；现有 SQLite 数据导入（如有 dev 数据）
+2. **将默认 backend 切到 Postgres**：`make setup` / `make dev` / `.env.example` 默认指向 PG；SQLite 保留为可选 dev 兜底
+3. `workspaces` + `workspace_memberships` 表 + 仓储
+4. 注册流程改造（自动建 1 人 workspace）+ JWT 扩 `wid`
+5. 现有表 ALTER 加 `workspace_id` 列（直接在 Postgres 上加，先 nullable）+ 数据回填脚本（"legacy_workspace"）→ ALTER 改 NOT NULL
+6. `threads.py` / `thread_runs.py` 入口校验 + 迁移所有现有 thread 到对应 workspace
+7. CI boundary 测试：禁止任何路径绕过入口直连 LangGraph saver
+8. `service_accounts` / `api_keys` / `external_users` schema only（Stage 0 末，为 Stage 1 准备）
 
 ### Go/No-Go 进入 Stage 1
 
 - 第一个付费意向客户出现
 - Stage 0 已部署到生产 ≥ 2 周，无 workspace 隔离 bug 报告
-- 团队对 SQLite 性能瓶颈有共识（用户数破百时切 Postgres）
+- 生产已稳定运行在 Postgres 上 ≥ 2 周，无 schema / 性能 regression
 
 ---
 
@@ -77,15 +81,14 @@
 
 **触发**：Stage 0 跑稳 + 拿到第一批付费用户（10–50 付费 / 500–2000 free）+ 1-2 个业务系统集成需求。
 **退出**：① 能放心让媒体/产品社区曝光，不会被白嫖跑偏；② 业务系统能用 API key 调通核心 endpoint，go-live。
-**时间盒**：10–15 周（原稿 6–10 周；headless API Pattern A 加 2-3 周 + Pattern B 加 2 周）
+**时间盒**：8–13 周（原 10-15 周；Postgres 切换已在 Stage 0 完成，省 2 周）
 
-> Stage 1 是**双轨并行**：付费 SaaS（cookie auth + Stripe + quota）和 Headless API（bearer auth + service account + `/api/v1/`）。两者共用 workspace + auth + quota 基座。详细 headless API 设计见 [headless-api-track.zh-CN.md](./headless-api-track.zh-CN.md)。
+> Stage 1 是**双轨并行**：付费 SaaS（cookie auth + Stripe + quota）和 Headless API（bearer auth + service account + `/api/v1/`）。两者共用 workspace + auth + quota 基座（Stage 0 已落地）。详细 headless API 设计见 [headless-api-track.zh-CN.md](./headless-api-track.zh-CN.md)。
 
 ### 必做（付费 SaaS 轨道）
 
 | 改动 | 说明 | 关联 ADR |
 |---|---|---|
-| **Postgres 切换** | 老数据 `pg_loader` 导入；`workspace_id` 已就位（Stage 0 加过）。**不可逆**。 | ADR-001 §4.4 |
 | **Quota 系统 v1**（强制） | `workspace_quotas` + `workspace_usage_daily` 表；`QuotaMiddleware` 在 lead_agent 链最前；硬限到达拒调用。**Freemium 不上 quota = 信用卡递给攻击者**。 | ADR-003 §4.4 |
 | **`TokenUsageMiddleware` 持久化** | 当前只 log（参 audit ADR-003）；要写入 `workspace_usage_daily(workspace_id, date, model, tokens_in, tokens_out)`，按 SA / external_user 维度同时支持。 | ADR-003 §4.3 |
 | **悲观预扣**（轻量版） | 按 `model_max_input_tokens` 估上限；幽灵 token 防御。 | ADR-003 §4.4.1 |
@@ -130,16 +133,15 @@
 
 ### 关键 PR 顺序（双轨）
 
-**轨道 A：付费 SaaS**
-1. Postgres 切换（dev 双驱动 → 生产灰度 → 全切）
-2. `workspace_quotas` / `workspace_usage_daily` 表 + 仓储
-3. `TokenUsageMiddleware` 升级为持久化（参 audit + ADR-003 §4.3）
-4. `QuotaMiddleware` 加入中间件链
-5. Stripe webhook + 订阅状态同步到 `workspace_quotas.plan`
-6. AioSandbox egress 白名单 + 资源限额
-7. 监控/告警接入
+**轨道 A：付费 SaaS**（Postgres 已在 Stage 0 切完，本轨道直接从 quota 起）
+1. `workspace_quotas` / `workspace_usage_daily` 表 + 仓储
+2. `TokenUsageMiddleware` 升级为持久化（参 audit + ADR-003 §4.3）
+3. `QuotaMiddleware` 加入中间件链
+4. Stripe webhook + 订阅状态同步到 `workspace_quotas.plan`
+5. AioSandbox egress 白名单 + 资源限额
+6. 监控/告警接入
 
-**轨道 B：Headless API Pattern A**（与 A 并行；步骤 1-2 必须先完成轨道 A 的 1）
+**轨道 B：Headless API Pattern A**（与 A 并行；无前置依赖）
 1. `service_accounts` / `api_keys` / `external_users` 仓储（schema 已在 Stage 0 加上）
 2. `APIKeyAuthBackend` + `AuthMiddleware` 双路径（cookie + bearer）
 3. CSRF middleware skip on bearer
@@ -165,12 +167,6 @@
 - 出现一次"差点超额"事件（quota 在悲观预扣下还是漏了一次）
 - 文件存储或 secret 管理出现一次手忙脚乱（备份遗漏 / key 误提交等）
 - 业务系统开始要求 webhook 推送（不再满足于轮询）
-
-### Go/No-Go 进入 Stage 2
-
-- 月活付费用户 ≥ 50 **或** 月活免费用户 ≥ 1000
-- 出现一次"差点超额"事件（quota 在悲观预扣下还是漏了一次）
-- 文件存储或 secret 管理出现一次手忙脚乱（备份遗漏 / key 误提交等）
 
 ---
 
@@ -284,10 +280,10 @@
 
 | 决策 | 在哪 Stage 做 | 做错了的代价 |
 |---|---|---|
-| **`workspace_id` 列加到所有业务表** | Stage 0 | 漏了某张表 → Stage 1 还在补；SQLite 加列后再迁 Postgres 痛苦 |
+| **Postgres 切换**（dev + 生产）| Stage 0 | Stage 0 选这个时机：没有生产数据，迁移阻力最小；切完不回头 |
+| **`workspace_id` 列加到所有业务表**（直接 Postgres）| Stage 0 | 漏了某张表 → Stage 1 还在补；不再走 SQLite → Postgres 二次迁移 |
 | **`workspaces` 表设计**（slug、plan、status 字段） | Stage 0 | 后期改 schema 要写迁移；用户 URL 全变 |
-| **JWT payload 字段** | Stage 0 + Stage 2 | 加字段时旧 cookie 失效；一次性想清楚 `wid/role/plan` 都加上，少一次 churn |
-| **Postgres 切换** | Stage 1 | 老数据迁移；切完不回头 |
+| **JWT payload 字段** | Stage 0 一次加齐 `wid+role` | 加字段时旧 cookie 失效；workspace-schema-design §4 锁定一次到位，避免 Stage 2 再 bump |
 | **ObjectStorage prefix 形态**（`workspaces/{wid}/...`） | Stage 2 | 改了所有用户产物 URL 失效 |
 | **K8s namespace 命名规则**（`ws-{wid}` 还是 `tenant-{wid}`） | Stage 3 | 改了所有 NetworkPolicy / RBAC |
 
@@ -313,15 +309,15 @@
 
 | Stage | 触发 | 时间盒 | 累计 |
 |---|---|---|---|
-| 0 | 现在 | 3–4 周 | 1 个月 |
-| 1 | 首批付费 + 业务系统集成（含自研 web 直连） | 10–15 周（headless API Pattern A+B 并行 4-5 周） | 4-5 个月 |
-| 2 | 增长期 | 10–16 周 | 8-9 个月 |
-| 3 | 成熟期 | 16–26 周 | 14-16 个月 |
+| 0 | 现在 | 4–5 周（含 Postgres 切换 + testcontainers） | 1.0–1.3 个月 |
+| 1 | 首批付费 + 业务系统集成（含自研 web 直连） | 8–13 周（headless API Pattern A+B 并行 4-5 周；Postgres 切换已前移到 Stage 0） | 3–4 个月 |
+| 2 | 增长期 | 10–16 周 | 7–8 个月 |
+| 3 | 成熟期 | 16–26 周 | 13–14 个月 |
 | 4 | 企业客户 | 单客户 4–8 周 | + 按需 |
 
-**全功能落地**：~14-16 个月（Stage 0–3 累计），不含 Stage 4 enterprise 特性。
-**最小可付费 + 业务系统集成**（Stage 0 + 1）：~4-5 个月。
-**风险可控的增长**（Stage 0 + 1 + 2）：~8-9 个月。
+**全功能落地**：~13-14 个月（Stage 0–3 累计），不含 Stage 4 enterprise 特性。
+**最小可付费 + 业务系统集成**（Stage 0 + 1）：~3-4 个月。
+**风险可控的增长**（Stage 0 + 1 + 2）：~7-8 个月。
 
 ---
 
