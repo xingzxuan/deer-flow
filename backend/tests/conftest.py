@@ -15,6 +15,13 @@ import pytest
 # Make 'app' and 'deerflow' importable from any working directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+# Make 'fixtures.*' importable as plugin modules from this conftest.
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Register fixture plugin modules so tests can request fixtures by name
+# without ad-hoc imports. ``fixtures.postgres`` provides
+# ``postgres_container`` (session-scoped) and ``postgres_url`` (per-test).
+pytest_plugins = ["fixtures.postgres"]
 
 # Break the circular import chain that exists in production code:
 #   deerflow.subagents.__init__
