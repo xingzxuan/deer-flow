@@ -543,6 +543,113 @@ def check_frontend_env(project_root: Path) -> CheckResult:
     )
 
 
+def check_database(config_path: Path) -> CheckResult:
+    """Verify the configured DB backend is reachable.
+
+    - sqlite: returns OK with a "dev only" hint
+    - postgres: resolves DATABASE_URL env, attempts asyncpg.connect,
+      reports server version on success; FAIL with fix hint otherwise
+    - memory: WARN ("data not persistent")
+    - missing/unknown backend: WARN
+    """
+    if not config_path.exists():
+        return CheckResult("database backend reachable", "skip")
+
+    try:
+        data = _load_yaml_file(config_path)
+    except Exception as exc:
+        return CheckResult(
+            "database backend reachable",
+            "fail",
+            str(exc),
+            fix="Fix config.yaml syntax, then re-run 'make doctor'",
+        )
+
+    db = data.get("database") or {}
+    backend = (db.get("backend") or "sqlite").lower()
+
+    if backend == "sqlite":
+        return CheckResult(
+            f"database backend = sqlite ({db.get('sqlite_dir', '.deer-flow/data')})",
+            "ok",
+        )
+
+    if backend == "memory":
+        return CheckResult(
+            "database backend = memory",
+            "warn",
+            fix="Use 'sqlite' or 'postgres' for persistent state; memory loses data on restart",
+        )
+
+    if backend != "postgres":
+        return CheckResult(
+            f"database backend = {backend!r}",
+            "warn",
+            fix="Set database.backend to 'sqlite', 'postgres', or 'memory' in config.yaml",
+        )
+
+    # ── postgres path: resolve URL and try a live connection ───────────────
+    raw_url = db.get("postgres_url") or db.get("url")
+    if isinstance(raw_url, str) and raw_url.startswith("$"):
+        env_name = raw_url[1:]
+        resolved = os.environ.get(env_name)
+        if not resolved:
+            return CheckResult(
+                f"database backend = postgres ({raw_url})",
+                "fail",
+                f"env var {env_name} is not set",
+                fix=f"Set {env_name} in .env (e.g. postgresql+asyncpg://user:pass@host:5432/db)",
+            )
+        url = resolved
+    elif isinstance(raw_url, str) and raw_url:
+        url = raw_url
+    else:
+        return CheckResult(
+            "database backend = postgres",
+            "fail",
+            "postgres_url not configured",
+            fix="Set database.postgres_url in config.yaml (or use $DATABASE_URL env ref)",
+        )
+
+    # Strip SQLAlchemy dialect prefix for raw asyncpg connect.
+    asyncpg_url = url.replace("postgresql+asyncpg://", "postgresql://")
+
+    try:
+        import asyncio
+
+        import asyncpg  # type: ignore[import-not-found]
+    except ImportError:
+        return CheckResult(
+            "database backend = postgres",
+            "warn",
+            "asyncpg not installed",
+            fix="cd backend && uv sync --extra postgres",
+        )
+
+    async def _ping() -> str:
+        conn = await asyncpg.connect(asyncpg_url, timeout=5)
+        try:
+            return await conn.fetchval("SELECT version()")
+        finally:
+            await conn.close()
+
+    try:
+        version = asyncio.run(_ping())
+        # Show just "PostgreSQL 16.4 ..." prefix, not the full build banner
+        short = version.split(" on ")[0] if version else "unknown"
+        return CheckResult(f"postgres reachable ({short})", "ok")
+    except Exception as exc:
+        return CheckResult(
+            "postgres reachable",
+            "fail",
+            str(exc),
+            fix=(
+                "Verify DATABASE_URL host/port/credentials; "
+                "for local dev start postgres via 'docker compose -f docker/docker-compose-dev.yaml up -d postgres'"
+            ),
+        )
+
+
 def check_sandbox(config_path: Path) -> list[CheckResult]:
     if not config_path.exists():
         return [CheckResult("sandbox configured", "skip")]
@@ -681,6 +788,10 @@ def main() -> int:
     # ── Web Capabilities ─────────────────────────────────────────────────────
     search_checks = [check_web_search(config_path), check_web_fetch(config_path)]
     sections.append(("Web Capabilities", search_checks))
+
+    # ── Database ──────────────────────────────────────────────────────────────
+    db_checks = [check_database(config_path)]
+    sections.append(("Database", db_checks))
 
     # ── Sandbox ──────────────────────────────────────────────────────────────
     sandbox_checks = check_sandbox(config_path)
