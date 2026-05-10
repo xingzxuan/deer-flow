@@ -1,0 +1,56 @@
+name: Postgres Tests
+
+# Stage 0 PR1 · runs the @pytest.mark.postgres subset against a real
+# Postgres backend (testcontainers spawns postgres:16-alpine on the
+# GitHub runner's docker daemon).
+#
+# Kept as a separate workflow from `Unit Tests` so:
+#   - the existing fast unit test loop is unchanged
+#   - PG tests can fail-soft during early Stage 0 rollout if needed
+#     (set continue-on-error: true on the run step)
+#   - infra cost is opt-in for forks
+
+on:
+  push:
+    branches: [ 'main' ]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: postgres-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-postgres-tests:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Verify Docker daemon (testcontainers needs it)
+        run: docker version
+
+      - name: Install backend dependencies (with postgres-test extra)
+        working-directory: backend
+        run: uv sync --group dev --extra postgres-test
+
+      - name: Run @pytest.mark.postgres tests
+        working-directory: backend
+        # -m postgres selects only postgres-tagged tests; testcontainers
+        # spins up postgres:16-alpine as the fixture's session-scoped
+        # container. ~5-10s container startup + per-test DB CREATE/DROP.
+        run: PYTHONPATH=. uv run pytest -m postgres -v
