@@ -15,7 +15,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 9
+config_version: 10
 
 # ============================================================================
 # Logging
@@ -878,16 +878,19 @@ skill_evolution:
 # NOTE: When both `checkpointer` and `database` are configured,
 # `checkpointer` takes precedence for LangGraph state persistence.
 # If you use `database`, you can remove the `checkpointer` section.
+# Stage 0+ default is postgres (parity with production, room for future RLS).
+# Set DATABASE_URL in .env. SQLite is preserved as an offline-dev fallback —
+# uncomment the SQLite block below and comment out the Postgres block to use it.
+#
+# Postgres (default):
+database:
+  backend: postgres
+  postgres_url: $DATABASE_URL
+
+# SQLite fallback (offline dev):
 # database:
 #   backend: sqlite
 #   sqlite_dir: .deer-flow/data
-#
-# database:
-#   backend: postgres
-#   postgres_url: $DATABASE_URL
-database:
-  backend: sqlite
-  sqlite_dir: .deer-flow/data
 
 # ============================================================================
 # Run Events Configuration
