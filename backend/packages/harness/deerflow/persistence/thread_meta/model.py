@@ -13,11 +13,13 @@ from deerflow.persistence.base import Base
 class ThreadMetaRow(Base):
     __tablename__ = "threads_meta"
 
-    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    assistant_id: Mapped[str | None] = mapped_column(String(128), index=True)
-    user_id: Mapped[str | None] = mapped_column(String(64), index=True)
-    display_name: Mapped[str | None] = mapped_column(String(256))
-    status: Mapped[str] = mapped_column(String(20), default="idle")
-    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="会话主键（LangGraph thread_id）")
+    assistant_id: Mapped[str | None] = mapped_column(String(128), index=True, comment="关联的 Assistant ID（自定义智能体名）；为 NULL 表示默认 lead agent")
+    user_id: Mapped[str | None] = mapped_column(String(64), index=True, comment="会话所有者；为 NULL 表示历史无主数据")
+    display_name: Mapped[str | None] = mapped_column(String(256), comment="会话显示名（自动生成的标题或用户手改）")
+    status: Mapped[str] = mapped_column(String(20), default="idle", comment='会话状态："idle" 空闲 / "busy" 正在产出')
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, comment="任意扩展元数据（JSON）")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), comment="创建时间（UTC）")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), comment="最近更新时间（UTC，写入时自动更新）")
+
+    __table_args__ = ({"comment": "会话元数据（每个 LangGraph thread 的概要信息）"},)
