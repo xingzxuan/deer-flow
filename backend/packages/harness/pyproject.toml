@@ -46,6 +46,10 @@ postgres = [
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",
 ]
+postgres-test = [
+    "deerflow-harness[postgres]",
+    "testcontainers[postgres]>=4.0",
+]
 pymupdf = ["pymupdf4llm>=0.0.17"]
 
 [build-system]
