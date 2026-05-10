@@ -76,6 +76,33 @@ def main() -> int:
 
         execution = run_execution_step(f"Step 3/{total_steps}")
 
+        # Database backend (Stage 0+ recommends Postgres; SQLite kept as
+        # offline dev fallback). Inline question rather than a separate
+        # wizard step — minimal addition, full step module can come later.
+        print()
+        print_header("Database backend")
+        print("Stage 0+ recommends Postgres for parity with production.")
+        print("SQLite is kept as an offline dev fallback.")
+        print()
+        use_postgres = ask_yes_no("Use Postgres? (y = postgres, n = sqlite)", default=True)
+        database_backend = "postgres" if use_postgres else "sqlite"
+        database_url: str | None = None
+        if use_postgres:
+            print()
+            print_info(
+                "Set DATABASE_URL in your .env file. Example:\n"
+                "  postgresql+asyncpg://deerflow:deerflow_dev@localhost:5432/deerflow\n"
+                "Or for a remote RDS:\n"
+                "  postgresql+asyncpg://USER:PASS@HOST:5432/DB"
+            )
+            print()
+            try:
+                raw = input("DATABASE_URL (leave blank to set later in .env): ").strip()
+            except EOFError:
+                raw = ""
+            if raw:
+                database_url = raw
+
         print_header(f"Step {total_steps}/{total_steps} · Writing configuration")
 
         write_config_yaml(
@@ -97,6 +124,7 @@ def main() -> int:
             allow_host_bash=execution.allow_host_bash,
             include_bash_tool=execution.include_bash_tool,
             include_write_tools=execution.include_write_tools,
+            database_backend=database_backend,
         )
         print_success(f"Config written to: {config_path.relative_to(project_root)}")
 
@@ -113,6 +141,8 @@ def main() -> int:
             env_pairs[search_provider.env_var] = search_api_key
         if fetch_api_key and fetch_provider and fetch_provider.env_var:
             env_pairs[fetch_provider.env_var] = fetch_api_key
+        if database_url:
+            env_pairs["DATABASE_URL"] = database_url
 
         if env_pairs:
             write_env_file(env_path, env_pairs)
