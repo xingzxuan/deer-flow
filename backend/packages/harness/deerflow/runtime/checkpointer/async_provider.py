@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import AsyncIterator
 
 from langgraph.types import Checkpointer
@@ -114,7 +115,14 @@ async def _async_checkpointer_from_database(db_config) -> AsyncIterator[Checkpoi
         if not db_config.postgres_url:
             raise ValueError("database.postgres_url is required for the postgres backend")
 
-        async with AsyncPostgresSaver.from_conn_string(db_config.postgres_url) as saver:
+        # LangGraph's AsyncPostgresSaver wraps psycopg directly and expects a
+        # libpq-style conninfo (`postgresql://...`). DeerFlow's own SQLAlchemy
+        # engine uses the same `postgres_url` but needs the `+asyncpg` dialect
+        # prefix. Strip the dialect prefix here so the same env var/config
+        # value satisfies both paths.
+        lg_conn_str = re.sub(r"^postgresql\+\w+://", "postgresql://", db_config.postgres_url)
+
+        async with AsyncPostgresSaver.from_conn_string(lg_conn_str) as saver:
             await saver.setup()
             yield saver
         return
