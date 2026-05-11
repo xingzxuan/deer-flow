@@ -6,7 +6,7 @@
 
 ## 一句话状态
 
-PR1 + PR2 已 merge 进 `docs/multi-tenant-redesign`（领先 origin 25 commits）。**下一个：PR3（workspaces + workspace_memberships 表 + 仓储）**，plan 推荐 Subagent-Driven 模式。
+PR1 + PR2 已 merge + **live 验证通过**（远程 Aliyun RDS PostgreSQL 17.9 上 9 张表 = DeerFlow 5 + LangGraph 4 全部 create_all 成功）。docs branch 领先 origin 30 commits（含 3 个 PR2 follow-up：testcontainers 镜像 17 / serve.sh auto-add postgres extra / async_provider URL strip）。**下一个：PR3（workspaces + workspace_memberships 表 + 仓储）**，plan 推荐 Subagent-Driven 模式。
 
 ## 8 PR 状态表
 
@@ -30,7 +30,7 @@ PR1 + PR2 已 merge 进 `docs/multi-tenant-redesign`（领先 origin 25 commits�
 
 | 项 | 状态 | 谁做 | 怎么做 |
 |---|---|---|---|
-| 启动 Docker daemon 后实跑 PG smoke 测试 | ⏳ | 用户 | `docker compose -f docker/docker-compose-dev.yaml up -d postgres && cd backend && PYTHONPATH=. uv run pytest -m postgres -v` |
+| 启动 Docker daemon 后实跑 PG smoke 测试（testcontainers 路径）| ⏳ | 用户 | `docker compose -f docker/docker-compose-dev.yaml up -d postgres && cd backend && PYTHONPATH=. uv run pytest -m postgres -v`。注：现在 RDS 已 live 验证（`make dev` 起 gateway + 9 张表已建），但 testcontainers ephemeral 路径仍未实跑过 |
 | ~~远程 RDS 大版本对齐 testcontainers 镜像~~ | ✅ done 2026-05-11 | — | RDS = PostgreSQL 17.9（`make doctor` 确认），fixture 已调到 `postgres:17-alpine` |
 | Push docs branch 到 origin 跑 CI（含新 `backend-postgres-tests` workflow） | ⏳ | 用户 | `git push origin docs/multi-tenant-redesign` 后看 GitHub Actions |
 | 7 项 schema 不可逆 LOCK 决策团队 review | ⏳ | 用户 + 团队 | 见 [workspace-schema-design §5](../01-redesign/workspace-schema-design.zh-CN.md#5-不可逆决策清单)；PR3 合入前必须签字 |
