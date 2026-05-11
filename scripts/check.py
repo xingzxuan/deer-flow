@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def configure_stdio() -> None:
@@ -55,6 +58,80 @@ def parse_node_major(version_text: str) -> int | None:
     if not major_str.isdigit():
         return None
     return int(major_str)
+
+
+def check_postgres_preflight() -> tuple[bool, str | None]:
+    """If config.yaml selects postgres, verify the URL is set + host:port reachable.
+
+    Returns ``(ok, message)``. Skips silently when:
+      - config.yaml does not exist (user hasn't run 'make setup' yet)
+      - database.backend is not 'postgres' (sqlite/memory don't need preflight)
+      - DATABASE_URL env var is not set (user hasn't filled .env yet)
+
+    Fails when database.backend is 'postgres' AND DATABASE_URL parses but the
+    host:port socket cannot be opened in 3 seconds.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    config_path = repo_root / "config.yaml"
+    if not config_path.exists():
+        return True, None  # No config yet — let setup_wizard handle it
+
+    try:
+        import yaml  # type: ignore[import-not-found]
+    except ImportError:
+        return True, "PyYAML not installed; skipping Postgres preflight"
+
+    try:
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        return False, f"Failed to parse config.yaml: {exc}"
+
+    db = data.get("database") or {}
+    backend = (db.get("backend") or "sqlite").lower()
+    if backend != "postgres":
+        return True, None  # not on PG, no preflight needed
+
+    raw_url = db.get("postgres_url") or db.get("url") or ""
+    if isinstance(raw_url, str) and raw_url.startswith("$"):
+        env_name = raw_url[1:]
+        # Load .env if available so this preflight matches what serve.sh sees
+        env_path = repo_root / ".env"
+        if env_path.exists():
+            try:
+                from dotenv import load_dotenv  # type: ignore[import-not-found]
+
+                load_dotenv(env_path, override=False)
+            except ImportError:
+                pass
+        url = os.environ.get(env_name, "")
+        if not url:
+            return False, f"database.backend=postgres but {env_name} is not set in .env"
+    else:
+        url = raw_url
+
+    if not url:
+        return False, "database.backend=postgres but no postgres_url is configured"
+
+    parsed = urlparse(url.replace("postgresql+asyncpg://", "postgresql://"))
+    host = parsed.hostname
+    port = parsed.port or 5432
+    if not host:
+        return False, f"Cannot parse host from DATABASE_URL: {url[:60]}..."
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(3)
+    try:
+        sock.connect((host, port))
+        return True, f"Postgres reachable at {host}:{port}"
+    except OSError as exc:
+        return (
+            False,
+            f"Postgres unreachable at {host}:{port} ({exc}). "
+            f"Run 'docker compose -f docker/docker-compose-dev.yaml up -d postgres' "
+            f"or check DATABASE_URL.",
+        )
+    finally:
+        sock.close()
 
 
 def main() -> int:
@@ -141,6 +218,18 @@ def main() -> int:
         print("    Ubuntu:  sudo apt install nginx")
         print("    Windows: use WSL for local mode or use Docker mode")
         print("    Or visit: https://nginx.org/en/download.html")
+        failed = True
+
+    print()
+    print("Checking Postgres preflight...")
+    pg_ok, pg_msg = check_postgres_preflight()
+    if pg_ok:
+        if pg_msg:
+            print(f"  OK {pg_msg}")
+        else:
+            print("  -- skipped (config.yaml missing or backend != postgres)")
+    else:
+        print(f"  FAIL {pg_msg}")
         failed = True
 
     print()
