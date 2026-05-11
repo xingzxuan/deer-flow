@@ -158,8 +158,16 @@ fi
 # ── Install dependencies ────────────────────────────────────────────────────
 
 if ! $SKIP_INSTALL; then
+    # Detect postgres backend in config.yaml so we install asyncpg + friends.
+    # Without this, `uv sync` strips the optional postgres extras between
+    # restarts and the gateway crashes at startup with "asyncpg is not installed".
+    UV_EXTRAS=""
+    if [ -f "$REPO_ROOT/config.yaml" ] && grep -qE "^[[:space:]]*backend:[[:space:]]*postgres" "$REPO_ROOT/config.yaml"; then
+        UV_EXTRAS="--extra postgres"
+        echo "Detected database.backend=postgres → installing postgres extras"
+    fi
     echo "Syncing dependencies..."
-    (cd backend && uv sync --quiet) || { echo "✗ Backend dependency install failed"; exit 1; }
+    (cd backend && uv sync --quiet $UV_EXTRAS) || { echo "✗ Backend dependency install failed"; exit 1; }
     (cd frontend && pnpm install --silent) || { echo "✗ Frontend dependency install failed"; exit 1; }
     echo "✓ Dependencies synced"
 else
