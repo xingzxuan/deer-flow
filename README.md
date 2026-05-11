@@ -202,6 +202,38 @@ That prompt is intended for coding agents. It tells the agent to clone the repo 
 
    </details>
 
+3. **Database backend (Stage 0+ defaults to Postgres)**
+
+   `config.example.yaml` ships with `database.backend: postgres` and `postgres_url: $DATABASE_URL`. Set `DATABASE_URL` in `.env`:
+
+   ```bash
+   DATABASE_URL=postgresql+asyncpg://deerflow:deerflow_dev@localhost:5432/deerflow
+   ```
+
+   Start the local Postgres dev container:
+
+   ```bash
+   docker compose -f docker/docker-compose-dev.yaml up -d postgres
+   ```
+
+   Or point `DATABASE_URL` at a remote RDS / Cloud SQL instance.
+
+   `make doctor` will report the configured backend, attempt an asyncpg connection, and surface actionable fix hints. `make dev` preflights Postgres reachability before starting services and aborts if `DATABASE_URL` is unreachable.
+
+   <details>
+   <summary>Offline dev (SQLite fallback)</summary>
+
+   If you prefer no Postgres, edit `config.yaml`:
+
+   ```yaml
+   database:
+     backend: sqlite
+     sqlite_dir: .deer-flow/data
+   ```
+
+   SQLite is preserved as a valid backend for offline development. RLS / multi-node features (Stage 2+) require Postgres.
+   </details>
+
 ### Running the Application
 
 #### Deployment Sizing
