@@ -31,7 +31,7 @@ PR1 + PR2 已 merge 进 `docs/multi-tenant-redesign`（领先 origin 25 commits�
 | 项 | 状态 | 谁做 | 怎么做 |
 |---|---|---|---|
 | 启动 Docker daemon 后实跑 PG smoke 测试 | ⏳ | 用户 | `docker compose -f docker/docker-compose-dev.yaml up -d postgres && cd backend && PYTHONPATH=. uv run pytest -m postgres -v` |
-| 远程 RDS 大版本对齐 testcontainers 镜像 | ⏳ | 用户 | `psql -h pgm-bp133hb7gna78yp7vo.pg.rds.aliyuncs.com -U wanggx -d postgres -c 'SELECT version();'`；如非 PG 16 调整 [`backend/tests/fixtures/postgres.py`](../../../backend/tests/fixtures/postgres.py) 里的 image tag |
+| ~~远程 RDS 大版本对齐 testcontainers 镜像~~ | ✅ done 2026-05-11 | — | RDS = PostgreSQL 17.9（`make doctor` 确认），fixture 已调到 `postgres:17-alpine` |
 | Push docs branch 到 origin 跑 CI（含新 `backend-postgres-tests` workflow） | ⏳ | 用户 | `git push origin docs/multi-tenant-redesign` 后看 GitHub Actions |
 | 7 项 schema 不可逆 LOCK 决策团队 review | ⏳ | 用户 + 团队 | 见 [workspace-schema-design §5](../01-redesign/workspace-schema-design.zh-CN.md#5-不可逆决策清单)；PR3 合入前必须签字 |
 | 远程 RDS 密码轮换 | ⏳ | 用户 | 之前在聊天里给过明文密码——建议事后轮换 |

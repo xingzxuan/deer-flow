@@ -37,7 +37,9 @@ def postgres_container():
         pytest.skip(f"testcontainers[postgres] not installed: {exc}")
 
     try:
-        with PostgresContainer("postgres:16-alpine") as pg:
+        # Image tag aligned with the production Aliyun RDS (PostgreSQL 17.9
+        # confirmed by `make doctor` 2026-05-11). Bump together with RDS upgrades.
+        with PostgresContainer("postgres:17-alpine") as pg:
             yield pg
     except Exception as exc:  # pragma: no cover - environment-dependent
         # DockerException, ConnectionError, etc. — surface a skip rather than
