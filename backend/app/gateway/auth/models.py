@@ -47,6 +47,26 @@ class UserResponse(BaseModel):
     needs_setup: bool = False
 
 
+class UserMeWorkspace(BaseModel):
+    """One workspace entry in ``GET /auth/me`` (Stage 0 PR4)."""
+
+    id: str
+    name: str
+    slug: str
+    role: str
+
+
+class UserMeResponse(BaseModel):
+    """Response model for ``GET /auth/me`` — extends UserResponse with workspaces."""
+
+    id: str
+    email: str
+    system_role: Literal["admin", "user"]
+    needs_setup: bool = False
+    default_workspace_id: str | None = None
+    workspaces: list[UserMeWorkspace] = []
+
+
 class ActiveWorkspace(BaseModel):
     """Lightweight workspace proxy injected into the request-scoped contextvar.
 

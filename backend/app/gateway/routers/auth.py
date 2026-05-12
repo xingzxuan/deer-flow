@@ -15,6 +15,7 @@ from app.gateway.auth import (
 )
 from app.gateway.auth.config import get_auth_config
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+from app.gateway.auth.models import UserMeResponse, UserMeWorkspace
 from app.gateway.auth.workspace_slug import auto_slug_from_email, next_available_slug
 from app.gateway.csrf_middleware import is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
@@ -447,11 +448,41 @@ async def change_password(request: Request, response: Response, body: ChangePass
     return MessageResponse(message="Password changed successfully")
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserMeResponse)
 async def get_me(request: Request):
-    """Get current authenticated user info."""
+    """Get current authenticated user info, including the workspaces they belong to."""
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.workspace import WorkspaceRepository
+    from deerflow.persistence.workspace_membership import WorkspaceMembershipRepository
+
     user = await get_current_user_from_request(request)
-    return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role, needs_setup=user.needs_setup)
+
+    sf = get_session_factory()
+    workspaces: list[UserMeWorkspace] = []
+    if sf is not None:
+        ws_repo = WorkspaceRepository(sf)
+        m_repo = WorkspaceMembershipRepository(sf)
+        ws_rows = await ws_repo.list_by_user(user_id=str(user.id))
+        memberships = await m_repo.list_by_user(user_id=str(user.id))
+        role_by_ws = {m["workspace_id"]: m["role"] for m in memberships}
+        workspaces = [
+            UserMeWorkspace(
+                id=w["id"],
+                name=w["name"],
+                slug=w["slug"],
+                role=role_by_ws.get(w["id"], "member"),
+            )
+            for w in ws_rows
+        ]
+
+    return UserMeResponse(
+        id=str(user.id),
+        email=user.email,
+        system_role=user.system_role,
+        needs_setup=user.needs_setup,
+        default_workspace_id=user.default_workspace_id,
+        workspaces=workspaces,
+    )
 
 
 _SETUP_STATUS_COOLDOWN: dict[str, float] = {}
