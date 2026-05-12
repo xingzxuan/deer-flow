@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-11，PR2 merge 进 docs branch 后
+> 上次更新：2026-05-12，PR3 merge 进 docs branch 后
 
 ## 一句话状态
 
-PR1 + PR2 已 merge + **live 验证通过**（远程 Aliyun RDS PostgreSQL 17.9 上 9 张表 = DeerFlow 5 + LangGraph 4 全部 create_all 成功）。docs branch 领先 origin 30 commits（含 3 个 PR2 follow-up：testcontainers 镜像 17 / serve.sh auto-add postgres extra / async_provider URL strip）。**下一个：PR3（workspaces + workspace_memberships 表 + 仓储）**，plan 推荐 Subagent-Driven 模式。
+PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow 7 含 workspaces / workspace_memberships + LangGraph 4，partial unique on owner 索引也验过）。docs branch 领先 origin 37 commits。**下一个：PR4（注册流程改造 + JWT 加 wid+role + AuthMiddleware ContextVar 注入 + /auth/me + alembic 0001 加 default_workspace_id）**，plan 推荐 Inline 模式（auth 改造跨多 router 文件耦合紧）。
 
 ## 8 PR 状态表
 
@@ -15,14 +15,14 @@ PR1 + PR2 已 merge + **live 验证通过**（远程 Aliyun RDS PostgreSQL 17.9 
 | **PR0** | ✅ merged | 1 | `a74b88a4` on docs branch | — |
 | **PR1** | ✅ merged | 8 (T1.1-T1.10) | merged into docs branch (`fab85b14..85a14f4c`) | [pr1-postgres-setup.md](./pr1-postgres-setup.md) |
 | **PR2** | ✅ merged | 8 (T2.1-T2.10) | merged into docs branch (`404135a1..1112a197`) | [pr2-postgres-default.md](./pr2-postgres-default.md) |
-| **PR3** | 🟡 pending | 0 | （会起 `feat/stage-0-pr3-workspaces`） | — |
+| **PR3** | ✅ merged | 7 (T3.1-T3.10) | merged into docs branch (`f63089ae..dda82640`) | [pr3-workspaces.md](./pr3-workspaces.md) |
 | **PR4** | 🟡 pending | 0 | — | — |
 | **PR5** | 🟡 pending | 0 | — | — |
 | **PR6** | 🟡 pending | 0 | — | — |
 | **PR7** | 🟡 pending | 0 | — | — |
 | **PR8** | 🟡 pending | 0 | — | — |
 
-**测试基线**：3087 passed + 23 skipped + 0 failed（PR2 末测试），PR1 之前是 3086 passed + 18 skipped。期间 1 个偶发 flaky `tests/test_client_live.py::TestLiveStreaming::test_stream_ai_content_nonempty`（单跑 PASS，env 相关，与本 Stage 无关）。
+**测试基线**：3134 passed + 25 skipped + 0 failed（PR3 末），PR2 末 3087，PR1 之前 3086 + 18 skipped。+47 PR3 新测试（16 ws_context + 23 ws_repo + 8 membership_repo）+ 2 PG-only skipped（T3.8）。期间 1 个偶发 flaky `tests/test_client_live.py::TestLiveStreaming::test_stream_ai_content_nonempty`（单跑 PASS，env 相关，与本 Stage 无关）。
 
 ## 用户必须跟进的事（live verification / 决策）
 
