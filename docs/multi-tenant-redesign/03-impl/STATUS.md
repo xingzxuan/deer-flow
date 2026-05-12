@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-12，PR3 merge 进 docs branch 后
+> 上次更新：2026-05-12，PR3 merge + 7 项 LOCK 决策团队全 ✅ sign-off 后
 
 ## 一句话状态
 
-PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow 7 含 workspaces / workspace_memberships + LangGraph 4，partial unique on owner 索引也验过）。docs branch 领先 origin 37 commits。**下一个：PR4（注册流程改造 + JWT 加 wid+role + AuthMiddleware ContextVar 注入 + /auth/me + alembic 0001 加 default_workspace_id）**，plan 推荐 Inline 模式（auth 改造跨多 router 文件耦合紧）。
+PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow 7 含 workspaces / workspace_memberships + LangGraph 4，partial unique on owner 索引也验过）+ **7 项 LOCK 决策团队 2026-05-12 全 ✅ sign-off**（id=String(36) / 命名=workspace_id / slug 规则 / memberships 复合 PK / JWT 一次到位 sub+wid+role+exp+iat+ver / default_workspace_id / FK CASCADE）+ **docs branch 已 push origin（38 commits, 2026-05-12 SSH-over-443）CI 用户已确认绿**。**下一个：PR4（注册流程改造 + JWT 加 wid+role + AuthMiddleware ContextVar 注入 + /auth/me + alembic 0001 加 default_workspace_id）**，plan 推荐 Inline 模式（auth 改造跨多 router 文件耦合紧）。
 
 ## 8 PR 状态表
 
@@ -32,8 +32,8 @@ PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow
 |---|---|---|---|
 | 启动 Docker daemon 后实跑 PG smoke 测试（testcontainers 路径）| ⏳ | 用户 | `docker compose -f docker/docker-compose-dev.yaml up -d postgres && cd backend && PYTHONPATH=. uv run pytest -m postgres -v`。注：现在 RDS 已 live 验证（`make dev` 起 gateway + 9 张表已建），但 testcontainers ephemeral 路径仍未实跑过 |
 | ~~远程 RDS 大版本对齐 testcontainers 镜像~~ | ✅ done 2026-05-11 | — | RDS = PostgreSQL 17.9（`make doctor` 确认），fixture 已调到 `postgres:17-alpine` |
-| Push docs branch 到 origin 跑 CI（含新 `backend-postgres-tests` workflow） | ⏳ | 用户 | `git push origin docs/multi-tenant-redesign` 后看 GitHub Actions |
-| 7 项 schema 不可逆 LOCK 决策团队 review | ⏳ | 用户 + 团队 | 见 [workspace-schema-design §5](../01-redesign/workspace-schema-design.zh-CN.md#5-不可逆决策清单)；PR3 合入前必须签字 |
+| ~~Push docs branch 到 origin 跑 CI（含新 `backend-postgres-tests` workflow）~~ | ✅ done 2026-05-12 | — | 38 commits pushed（dce5e959..a592319e），SSH-over-443 绕代理；CI 用户确认绿 |
+| ~~7 项 schema 不可逆 LOCK 决策团队 review~~ | ✅ done 2026-05-12 | — | 全 7 项 ✅ sign-off：id=String(36) / 命名=workspace_id+wid / slug `^[a-z0-9](-?[a-z0-9])*$` 3-32 / memberships 复合 PK / JWT 一次到位 / default_workspace_id / FK CASCADE。详见 [workspace-schema-design §5](../01-redesign/workspace-schema-design.zh-CN.md#5-不可逆决策清单)。PR4 可开工 |
 | 远程 RDS 密码轮换 | ⏳ | 用户 | 之前在聊天里给过明文密码——建议事后轮换 |
 
 ## 跳过 / 推迟的子任务（agent 当时主动跳的，需用户认可或后续补）
