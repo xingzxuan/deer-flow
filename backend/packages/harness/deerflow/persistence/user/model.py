@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Index, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -36,6 +36,12 @@ class UserRow(Base):
     oauth_id: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="OAuth 提供商内的用户 ID；与 oauth_provider 组合需唯一")
     needs_setup: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否需要完成首次设置（admin 自动创建后改密码/邮箱）")
     token_version: Mapped[int] = mapped_column(nullable=False, default=0, comment="JWT 令牌版本号；自增即吊销该用户所有旧令牌")
+    default_workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="登录后默认进入的 workspace；NULL 时强制走 picker（user 多 workspace 场景）",
+    )
 
     __table_args__ = (
         Index(
