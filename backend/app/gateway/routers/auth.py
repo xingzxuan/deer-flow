@@ -23,7 +23,7 @@ from app.gateway.deps import get_current_user_from_request, get_local_provider
 logger = logging.getLogger(__name__)
 
 
-async def _ensure_default_workspace(user) -> str:
+async def ensure_default_workspace(user) -> str:
     """Create the user's personal workspace + owner membership, set default_workspace_id.
 
     Returns the new workspace id. Idempotent for users who already
@@ -343,7 +343,7 @@ async def login_local(
     _record_login_success(client_ip)
     # Ensure the user has a workspace (covers pre-PR4 users still in DB
     # whose default_workspace_id was never backfilled by the lifespan hook).
-    workspace_id = await _ensure_default_workspace(user)
+    workspace_id = await ensure_default_workspace(user)
     token = create_access_token(
         str(user.id),
         token_version=user.token_version,
@@ -373,7 +373,7 @@ async def register(request: Request, response: Response, body: RegisterRequest):
             detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already registered").model_dump(),
         )
 
-    workspace_id = await _ensure_default_workspace(user)
+    workspace_id = await ensure_default_workspace(user)
 
     token = create_access_token(
         str(user.id),
@@ -434,9 +434,9 @@ async def change_password(request: Request, response: Response, body: ChangePass
 
     # Re-issue cookie with new token_version. wid + role must be carried
     # forward so the re-signed JWT still passes the AuthMiddleware
-    # workspace gate; _ensure_default_workspace fills in for the (rare)
+    # workspace gate; ensure_default_workspace fills in for the (rare)
     # case where the user predates PR4 and has not been backfilled.
-    workspace_id = await _ensure_default_workspace(user)
+    workspace_id = await ensure_default_workspace(user)
     token = create_access_token(
         str(user.id),
         token_version=user.token_version,
@@ -555,7 +555,7 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
             detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
         )
 
-    workspace_id = await _ensure_default_workspace(user)
+    workspace_id = await ensure_default_workspace(user)
 
     token = create_access_token(
         str(user.id),

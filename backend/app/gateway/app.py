@@ -108,6 +108,23 @@ async def _ensure_admin_user(app: FastAPI) -> None:
 
     admin_id = str(row.id)
 
+    # Stage 0 PR4 backfill: pre-PR4 admins have no default_workspace_id.
+    # Create their personal workspace + owner membership on next boot so
+    # they can log in and pass the workspace gate without hand-rolling
+    # SQL. Idempotent — ensure_default_workspace short-circuits when the
+    # column is already set.
+    try:
+        admin_user = await provider.get_user(admin_id)
+        if admin_user is not None and not admin_user.default_workspace_id:
+            from app.gateway.routers.auth import ensure_default_workspace
+
+            ws_id = await ensure_default_workspace(admin_user)
+            logger.info("Backfilled default workspace %s for admin %s", ws_id, admin_id)
+    except Exception:
+        # Don't fail startup if backfill stumbles — the user can still
+        # log in (login_local calls the same helper on its hot path).
+        logger.exception("Admin workspace backfill failed (non-fatal)")
+
     # LangGraph store orphan migration — non-fatal.
     # This covers the "no-auth → with-auth" upgrade path for users
     # whose existing LangGraph thread metadata has no user_id set.
