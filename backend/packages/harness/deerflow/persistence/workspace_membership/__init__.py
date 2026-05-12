@@ -12,5 +12,13 @@ unique index. Owner transfer is a two-row transactional swap.
 from __future__ import annotations
 
 from deerflow.persistence.workspace_membership.model import WorkspaceMembershipRow
+from deerflow.persistence.workspace_membership.sql import (
+    MembershipValidationError,
+    WorkspaceMembershipRepository,
+)
 
-__all__ = ["WorkspaceMembershipRow"]
+__all__ = [
+    "MembershipValidationError",
+    "WorkspaceMembershipRepository",
+    "WorkspaceMembershipRow",
+]
