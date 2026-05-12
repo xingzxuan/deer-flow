@@ -49,8 +49,8 @@ PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow
 
 详见 plan [关键开放问题](../../superpowers/plans/2026-05-10-stage-0-multi-tenant-foundation.md#关键开放问题执行-session-第一件事处理)：
 
-1. **PR4 起会真正用到 alembic**——首个 revision 之前要不要加 baseline？plan agent 建议 0001 直接当首个 revision，`down_revision = None`。验证：跑 `cd backend && PYTHONPATH=. uv run alembic current` 看默认行为
-2. **`_ensure_admin_user(app)` 现状的孤立 thread 迁移逻辑**——PR4 / PR5 假设它能扩；先 grep `app.py` 看现状
+1. ~~**PR4 起会真正用到 alembic**——首个 revision 之前要不要加 baseline？~~ **✅ T4.1 (2026-05-12) 已验证**：`versions/` 空 + `alembic heads`/`history` 都空输出 → 0001 直接当首个 revision、`down_revision = None`，**不需要 baseline**。`alembic_version` 表首次 `upgrade head` 时自动建；现有 create_all() 已建好的 schema 不冲突（0001 只 ADD COLUMN）。`doctor.py` 不需要加自动检测
+2. ~~**`_ensure_admin_user(app)` 现状的孤立 thread 迁移逻辑**~~ **✅ T4 准备阶段 (2026-05-12) 已 grep**：`app.py:52` 当前只做两件事——(a) admin_count==0 时仅日志提示去 `/setup`，(b) admin 已存在时跑 LangGraph store 孤立 thread 迁移。**不自建 admin**。所以 T4.13 真实任务范围 = "admin 已存在但无 workspace"的 idempotent backfill 分支（plan 顶部"风险与缓解"段写的才对，task 措辞"建完 admin 顺带建"是误导，实际归 T4.8）
 3. **PG 大版本对齐**（同上"用户必须跟进"#2）
 
 ## 下一步建议
