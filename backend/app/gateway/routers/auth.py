@@ -340,7 +340,15 @@ async def login_local(
         )
 
     _record_login_success(client_ip)
-    token = create_access_token(str(user.id), token_version=user.token_version)
+    # Ensure the user has a workspace (covers pre-PR4 users still in DB
+    # whose default_workspace_id was never backfilled by the lifespan hook).
+    workspace_id = await _ensure_default_workspace(user)
+    token = create_access_token(
+        str(user.id),
+        token_version=user.token_version,
+        workspace_id=workspace_id,
+        role="owner",
+    )
     _set_session_cookie(response, token, request)
 
     return LoginResponse(
@@ -423,8 +431,17 @@ async def change_password(request: Request, response: Response, body: ChangePass
 
     await provider.update_user(user)
 
-    # Re-issue cookie with new token_version
-    token = create_access_token(str(user.id), token_version=user.token_version)
+    # Re-issue cookie with new token_version. wid + role must be carried
+    # forward so the re-signed JWT still passes the AuthMiddleware
+    # workspace gate; _ensure_default_workspace fills in for the (rare)
+    # case where the user predates PR4 and has not been backfilled.
+    workspace_id = await _ensure_default_workspace(user)
+    token = create_access_token(
+        str(user.id),
+        token_version=user.token_version,
+        workspace_id=workspace_id,
+        role="owner",
+    )
     _set_session_cookie(response, token, request)
 
     return MessageResponse(message="Password changed successfully")
