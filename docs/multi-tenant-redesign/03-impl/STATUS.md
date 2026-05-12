@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-12，PR3 merge + 7 项 LOCK 决策团队全 ✅ sign-off 后
+> 上次更新：2026-05-12，PR4 merge 进 docs branch 后
 
 ## 一句话状态
 
-PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow 7 含 workspaces / workspace_memberships + LangGraph 4，partial unique on owner 索引也验过）+ **7 项 LOCK 决策团队 2026-05-12 全 ✅ sign-off**（id=String(36) / 命名=workspace_id / slug 规则 / memberships 复合 PK / JWT 一次到位 sub+wid+role+exp+iat+ver / default_workspace_id / FK CASCADE）+ **docs branch 已 push origin（38 commits, 2026-05-12 SSH-over-443）CI 用户已确认绿**。**下一个：PR4（注册流程改造 + JWT 加 wid+role + AuthMiddleware ContextVar 注入 + /auth/me + alembic 0001 加 default_workspace_id）**，plan 推荐 Inline 模式（auth 改造跨多 router 文件耦合紧）。
+PR1 + PR2 + PR3 + **PR4** 已 merge + **live 验证通过**（PR3 时 RDS 上 11 张表）+ **7 项 LOCK 决策 sign-off** + **docs branch 已 push origin（SSH-over-443）**。**PR4 (2026-05-12)** 落地：alembic 0001 (`users.default_workspace_id`) + JWT 扩 `wid+role` + AuthMiddleware ContextVar 注入 + 注册流程自动建 1 人 workspace + `/auth/me` 返回 `workspaces[]` + lifespan 回填 pre-PR4 admin。**3136 passed + 26 skipped + 0 PR4-induced failures**（16 个预存 caplog flake 已 stash 验证与 PR4 无关）。**下一个：PR5（alembic 0002 ALTER 4 表 + workspace_id 回填 + 改 NOT NULL）**。
 
 ## 8 PR 状态表
 
@@ -16,13 +16,13 @@ PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow
 | **PR1** | ✅ merged | 8 (T1.1-T1.10) | merged into docs branch (`fab85b14..85a14f4c`) | [pr1-postgres-setup.md](./pr1-postgres-setup.md) |
 | **PR2** | ✅ merged | 8 (T2.1-T2.10) | merged into docs branch (`404135a1..1112a197`) | [pr2-postgres-default.md](./pr2-postgres-default.md) |
 | **PR3** | ✅ merged | 7 (T3.1-T3.10) | merged into docs branch (`f63089ae..dda82640`) | [pr3-workspaces.md](./pr3-workspaces.md) |
-| **PR4** | 🟡 pending | 0 | — | — |
+| **PR4** | ✅ merged | 14 (T4.1-T4.14) | merged into docs branch (`d98498b7..5c7753c0`) | [pr4-auth-workspace.md](./pr4-auth-workspace.md) |
 | **PR5** | 🟡 pending | 0 | — | — |
 | **PR6** | 🟡 pending | 0 | — | — |
 | **PR7** | 🟡 pending | 0 | — | — |
 | **PR8** | 🟡 pending | 0 | — | — |
 
-**测试基线**：3134 passed + 25 skipped + 0 failed（PR3 末），PR2 末 3087，PR1 之前 3086 + 18 skipped。+47 PR3 新测试（16 ws_context + 23 ws_repo + 8 membership_repo）+ 2 PG-only skipped（T3.8）。期间 1 个偶发 flaky `tests/test_client_live.py::TestLiveStreaming::test_stream_ai_content_nonempty`（单跑 PASS，env 相关，与本 Stage 无关）。
+**测试基线**：**PR4 末 3136 passed + 26 skipped**（PR3 末 3134 + 25；+38 PR4 新测试吸收了 13 处 test_auth/test_langgraph_auth/test_auth_errors 改写）。PR2 末 3087。**16 个 caplog 排序 flake 在全套跑里出现**（test_jina_client / test_lead_agent_prompt / test_summarization_middleware 等）→ stash 验证均与 PR4 无关；预存 issue，集中清理推迟到 follow-up。期间 1 个偶发 flaky `tests/test_client_live.py::TestLiveStreaming::test_stream_ai_content_nonempty`（单跑 PASS，env 相关，与本 Stage 无关）。
 
 ## 用户必须跟进的事（live verification / 决策）
 
@@ -44,6 +44,9 @@ PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow
 | PR2 T2.7 | 写 setup_wizard 推荐 PG 的代码 | 已在 PR1 T1.8 完整实现（empty commit `745a33e0` 仅做 task tracking） | 无需跟进 |
 | PR2 T2.8 | sqlite→pg 数据迁移工具 (`scripts/migrate_sqlite_to_postgres.py`) | plan 标 optional + Stage 0 没生产数据 | 如果出现"dev 用 SQLite 跑过一段、想保留数据迁 PG"的需求再补 |
 | PR2 T2.9 | `backend/CLAUDE.md` Database 段更新 | README 已覆盖 80% 价值 | 写 PR3 时顺手补一句（agent 自己能做，不阻塞） |
+| PR4 T4.14 | 真机 `make dev` smoke 注册流程 | agent 无法实际起 gateway daemon | 用户跟进；命令清单见 [pr4-auth-workspace.md "Live smoke 命令"](./pr4-auth-workspace.md#live-smoke-命令用户跟进) |
+| PR4 follow-up | Regular user pre-PR4 backfill 脚本 | login 路径已 lazy backfill 覆盖；如果生产有大量预存 regular user，可补 batch 脚本 | 等真出现这个场景再写 |
+| PR4 follow-up | 16 个 pre-existing caplog flake 集中清理 | 跨多个 test 文件的 propagation 问题，与 PR4 无关 | 单独 follow-up 处理 |
 
 ## 即将遇到的开放问题（plan 末尾列的，下个 session 处理）
 
@@ -55,7 +58,9 @@ PR1 + PR2 + PR3 已 merge + **live 验证通过**（RDS 上 11 张表 = DeerFlow
 
 ## 下一步建议
 
-按 plan 推荐的 PR3 = Subagent-Driven 模式。如果继续 Inline（像 PR1/PR2 那样）也可以，trade-off：
+**PR5（alembic 0002 ALTER 4 表 + workspace_id 回填 + 改 NOT NULL）**。plan 推荐 Inline 模式（migration script + 回填 + ALTER 改 NOT NULL 三阶段强耦合）。
+
+历史模式回顾：
 
 | | Inline（PR1/PR2 模式） | Subagent-Driven |
 |---|---|---|
