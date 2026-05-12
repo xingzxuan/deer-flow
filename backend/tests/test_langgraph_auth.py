@@ -74,7 +74,7 @@ def test_expired_jwt_raises_401():
 
 
 def test_user_not_found_raises_401():
-    token = create_access_token("ghost")
+    token = create_access_token("ghost", workspace_id="ws-test", role="owner")
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(None)):
         with pytest.raises(Auth.exceptions.HTTPException) as exc:
             asyncio.run(authenticate(_req({"access_token": token})))
@@ -84,7 +84,7 @@ def test_user_not_found_raises_401():
 
 def test_token_version_mismatch_raises_401():
     user = _user(token_version=2)
-    token = create_access_token(str(user.id), token_version=1)
+    token = create_access_token(str(user.id), token_version=1, workspace_id="ws-test", role="owner")
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(user)):
         with pytest.raises(Auth.exceptions.HTTPException) as exc:
             asyncio.run(authenticate(_req({"access_token": token})))
@@ -94,7 +94,7 @@ def test_token_version_mismatch_raises_401():
 
 def test_valid_token_returns_user_id():
     user = _user(token_version=0)
-    token = create_access_token(str(user.id), token_version=0)
+    token = create_access_token(str(user.id), token_version=0, workspace_id="ws-test", role="owner")
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(user)):
         result = asyncio.run(authenticate(_req({"access_token": token})))
     assert result == str(user.id)
@@ -102,7 +102,7 @@ def test_valid_token_returns_user_id():
 
 def test_valid_token_matching_version():
     user = _user(token_version=5)
-    token = create_access_token(str(user.id), token_version=5)
+    token = create_access_token(str(user.id), token_version=5, workspace_id="ws-test", role="owner")
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(user)):
         result = asyncio.run(authenticate(_req({"access_token": token})))
     assert result == str(user.id)
@@ -113,7 +113,7 @@ def test_valid_token_matching_version():
 
 def test_provider_exception_propagates():
     """Provider raises → should not be swallowed silently."""
-    token = create_access_token("user-1")
+    token = create_access_token("user-1", workspace_id="ws-test", role="owner")
     p = AsyncMock()
     p.get_user = AsyncMock(side_effect=RuntimeError("DB down"))
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=p):
@@ -126,7 +126,11 @@ def test_jwt_missing_ver_defaults_to_zero():
     import jwt as pyjwt
 
     uid = str(uuid4())
-    raw = pyjwt.encode({"sub": uid, "exp": 9999999999, "iat": 1000000000}, _JWT_SECRET, algorithm="HS256")
+    raw = pyjwt.encode(
+        {"sub": uid, "wid": "ws-test", "role": "owner", "exp": 9999999999, "iat": 1000000000},
+        _JWT_SECRET,
+        algorithm="HS256",
+    )
     user = _user(user_id=uid, token_version=0)
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(user)):
         result = asyncio.run(authenticate(_req({"access_token": raw})))
@@ -138,7 +142,11 @@ def test_jwt_missing_ver_rejected_when_user_version_nonzero():
     import jwt as pyjwt
 
     uid = str(uuid4())
-    raw = pyjwt.encode({"sub": uid, "exp": 9999999999, "iat": 1000000000}, _JWT_SECRET, algorithm="HS256")
+    raw = pyjwt.encode(
+        {"sub": uid, "wid": "ws-test", "role": "owner", "exp": 9999999999, "iat": 1000000000},
+        _JWT_SECRET,
+        algorithm="HS256",
+    )
     user = _user(user_id=uid, token_version=1)
     with patch("app.gateway.langgraph_auth.get_local_provider", return_value=_mock_provider(user)):
         with pytest.raises(Auth.exceptions.HTTPException) as exc:
@@ -221,7 +229,7 @@ def test_filter_with_empty_metadata():
 
 
 def test_shared_jwt_secret():
-    token = create_access_token("user-1", token_version=3)
+    token = create_access_token("user-1", token_version=3, workspace_id="ws-test", role="owner")
     payload = decode_token(token)
     from app.gateway.auth.errors import TokenError
 

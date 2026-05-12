@@ -101,7 +101,7 @@ def test_create_and_decode_token():
     import os
 
     os.environ["AUTH_JWT_SECRET"] = "test-secret-key-for-jwt-testing-minimum-32-chars"
-    token = create_access_token(user_id)
+    token = create_access_token(user_id, workspace_id="ws-test", role="owner")
     assert isinstance(token, str)
 
     payload = decode_token(token)
@@ -132,7 +132,7 @@ def test_decode_token_invalid():
 def test_create_token_custom_expiry():
     """Custom expiry is respected."""
     user_id = str(uuid4())
-    token = create_access_token(user_id, expires_delta=timedelta(hours=1))
+    token = create_access_token(user_id, expires_delta=timedelta(hours=1), workspace_id="ws-test", role="owner")
     payload = decode_token(token)
     assert payload is not None
     assert payload.sub == user_id
@@ -420,7 +420,7 @@ def test_jwt_encodes_ver():
     from app.gateway.auth.errors import TokenError
 
     os.environ["AUTH_JWT_SECRET"] = "test-secret-key-for-jwt-testing-minimum-32-chars"
-    token = create_access_token(str(uuid4()), token_version=3)
+    token = create_access_token(str(uuid4()), token_version=3, workspace_id="ws-test", role="owner")
     payload = decode_token(token)
     assert not isinstance(payload, TokenError)
     assert payload.ver == 3
@@ -433,7 +433,7 @@ def test_jwt_default_ver_zero():
     from app.gateway.auth.errors import TokenError
 
     os.environ["AUTH_JWT_SECRET"] = "test-secret-key-for-jwt-testing-minimum-32-chars"
-    token = create_access_token(str(uuid4()))
+    token = create_access_token(str(uuid4()), workspace_id="ws-test", role="owner")
     payload = decode_token(token)
     assert not isinstance(payload, TokenError)
     assert payload.ver == 0
@@ -447,7 +447,7 @@ def test_token_version_mismatch_rejects():
     os.environ["AUTH_JWT_SECRET"] = "test-secret-key-for-jwt-testing-minimum-32-chars"
 
     user_id = str(uuid4())
-    token = create_access_token(user_id, token_version=0)
+    token = create_access_token(user_id, token_version=0, workspace_id="ws-test", role="owner")
 
     mock_user = User(id=user_id, email="test@example.com", password_hash="hash", token_version=1)
 

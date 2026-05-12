@@ -68,10 +68,20 @@ def decode_token(token: str) -> TokenPayload | TokenError:
     config = get_auth_config()
     try:
         payload = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
-        return TokenPayload(**payload)
     except jwt.ExpiredSignatureError:
         return TokenError.EXPIRED
     except jwt.InvalidSignatureError:
         return TokenError.INVALID_SIGNATURE
     except jwt.PyJWTError:
+        return TokenError.MALFORMED
+
+    # Reject legacy pre-PR4 tokens that lack the wid claim. Reported as
+    # WORKSPACE_MISSING (not MALFORMED) so middleware can surface a
+    # specific 401 telling the frontend to re-issue via /select-workspace.
+    if "wid" not in payload or payload.get("wid") is None:
+        return TokenError.WORKSPACE_MISSING
+
+    try:
+        return TokenPayload(**payload)
+    except Exception:
         return TokenError.MALFORMED

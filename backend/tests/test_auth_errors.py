@@ -69,7 +69,7 @@ def test_decode_token_returns_token_error_on_malformed():
 
 def test_decode_token_returns_payload_on_valid():
     _setup_config()
-    token = create_access_token("user-123")
+    token = create_access_token("user-123", workspace_id="ws-test", role="owner")
     result = decode_token(token)
     assert not isinstance(result, TokenError)
     assert result.sub == "user-123"
