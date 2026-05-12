@@ -46,6 +46,7 @@ class SQLiteUserRepository(UserRepository):
             oauth_id=row.oauth_id,
             needs_setup=row.needs_setup,
             token_version=row.token_version,
+            default_workspace_id=row.default_workspace_id,
         )
 
     @staticmethod
@@ -60,6 +61,7 @@ class SQLiteUserRepository(UserRepository):
             oauth_id=user.oauth_id,
             needs_setup=user.needs_setup,
             token_version=user.token_version,
+            default_workspace_id=user.default_workspace_id,
         )
 
     # ── CRUD ──────────────────────────────────────────────────────────
@@ -106,6 +108,7 @@ class SQLiteUserRepository(UserRepository):
             row.oauth_id = user.oauth_id
             row.needs_setup = user.needs_setup
             row.token_version = user.token_version
+            row.default_workspace_id = user.default_workspace_id
             await session.commit()
         return user
 

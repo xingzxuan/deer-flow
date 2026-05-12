@@ -32,7 +32,7 @@ _SLUG_MAX_LEN = 32
 
 # slug 黑名单（应用层校验，不写 DB constraint）。包含 ADR-007 §4 保留 slug
 # + 路径 + Next.js 保留 + 业务保留词。
-_SLUG_BLACKLIST = frozenset(
+SLUG_BLACKLIST = frozenset(
     {
         "admin",
         "api",
@@ -77,7 +77,7 @@ def _validate_slug(slug: str) -> None:
         raise WorkspaceValidationError(f"slug length must be between {_SLUG_MIN_LEN} and {_SLUG_MAX_LEN}, got {len(slug)}")
     if not _SLUG_PATTERN.fullmatch(slug):
         raise WorkspaceValidationError(f"slug {slug!r} does not match required pattern ^[a-z0-9](-?[a-z0-9])*$")
-    if slug in _SLUG_BLACKLIST:
+    if slug in SLUG_BLACKLIST:
         raise WorkspaceValidationError(f"slug {slug!r} is reserved")
 
 

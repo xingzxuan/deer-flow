@@ -15,10 +15,58 @@ from app.gateway.auth import (
 )
 from app.gateway.auth.config import get_auth_config
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+from app.gateway.auth.workspace_slug import auto_slug_from_email, next_available_slug
 from app.gateway.csrf_middleware import is_secure_request
 from app.gateway.deps import get_current_user_from_request, get_local_provider
 
 logger = logging.getLogger(__name__)
+
+
+async def _ensure_default_workspace(user) -> str:
+    """Create the user's personal workspace + owner membership, set default_workspace_id.
+
+    Returns the new workspace id. Idempotent for users who already
+    have a default_workspace_id (used by both the registration flow
+    and the lifespan backfill in app.py).
+    """
+    from deerflow.persistence.engine import get_session_factory
+    from deerflow.persistence.workspace import WorkspaceRepository
+    from deerflow.persistence.workspace.sql import SLUG_BLACKLIST
+    from deerflow.persistence.workspace_membership import WorkspaceMembershipRepository
+
+    if user.default_workspace_id:
+        return user.default_workspace_id
+
+    sf = get_session_factory()
+    ws_repo = WorkspaceRepository(sf)
+    m_repo = WorkspaceMembershipRepository(sf)
+
+    base_slug = auto_slug_from_email(user.email)
+
+    async def slug_exists(s: str) -> bool:
+        # Treat blacklisted slugs as "taken" so the walker skips them
+        # instead of letting WorkspaceRepository.create raise after a
+        # successful slug computation (the user picked a reserved name
+        # like "admin@example.com" → base slug "admin").
+        if s in SLUG_BLACKLIST:
+            return True
+        return (await ws_repo.get_by_slug(s)) is not None
+
+    unique_slug = await next_available_slug(base_slug, exists_check=slug_exists)
+
+    display_local = user.email.split("@", 1)[0]
+    workspace = await ws_repo.create(
+        name=f"{display_local}'s Workspace"[:64],
+        slug=unique_slug,
+        owner_id=str(user.id),
+    )
+    await m_repo.add(workspace_id=workspace["id"], user_id=str(user.id), role="owner")
+
+    user.default_workspace_id = workspace["id"]
+    await get_local_provider().update_user(user)
+
+    return workspace["id"]
+
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -452,7 +500,14 @@ async def initialize_admin(request: Request, response: Response, body: Initializ
             detail=AuthErrorResponse(code=AuthErrorCode.SYSTEM_ALREADY_INITIALIZED, message="System already initialized").model_dump(),
         )
 
-    token = create_access_token(str(user.id), token_version=user.token_version)
+    workspace_id = await _ensure_default_workspace(user)
+
+    token = create_access_token(
+        str(user.id),
+        token_version=user.token_version,
+        workspace_id=workspace_id,
+        role="owner",
+    )
     _set_session_cookie(response, token, request)
 
     return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role)
