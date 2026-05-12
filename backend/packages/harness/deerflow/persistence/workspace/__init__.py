@@ -12,5 +12,6 @@ to FK back to ``workspaces.id``.
 from __future__ import annotations
 
 from deerflow.persistence.workspace.model import WorkspaceRow
+from deerflow.persistence.workspace.sql import WorkspaceRepository, WorkspaceValidationError
 
-__all__ = ["WorkspaceRow"]
+__all__ = ["WorkspaceRepository", "WorkspaceRow", "WorkspaceValidationError"]
