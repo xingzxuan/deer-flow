@@ -364,7 +364,14 @@ async def register(request: Request, response: Response, body: RegisterRequest):
             detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message="Email already registered").model_dump(),
         )
 
-    token = create_access_token(str(user.id), token_version=user.token_version)
+    workspace_id = await _ensure_default_workspace(user)
+
+    token = create_access_token(
+        str(user.id),
+        token_version=user.token_version,
+        workspace_id=workspace_id,
+        role="owner",
+    )
     _set_session_cookie(response, token, request)
 
     return UserResponse(id=str(user.id), email=user.email, system_role=user.system_role)
