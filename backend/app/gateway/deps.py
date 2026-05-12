@@ -220,6 +220,10 @@ async def get_current_user_from_request(request: Request):
             detail=AuthErrorResponse(code=AuthErrorCode.TOKEN_INVALID, message="Token revoked (password changed)").model_dump(),
         )
 
+    # Stash decoded payload on request.state so AuthMiddleware can read
+    # wid/role for the workspace contextvar without a second decode.
+    request.state.auth_payload = payload
+
     return user
 
 

@@ -31,6 +31,12 @@ class User(BaseModel):
     needs_setup: bool = Field(default=False, description="True for auto-created admin until setup completes")
     token_version: int = Field(default=0, description="Incremented on password change to invalidate old JWTs")
 
+    # Workspace linkage (Stage 0 PR4)
+    default_workspace_id: str | None = Field(
+        default=None,
+        description="The workspace the user lands in by default after login. NULL → /select-workspace.",
+    )
+
 
 class UserResponse(BaseModel):
     """Response model for user info endpoint."""
@@ -39,3 +45,18 @@ class UserResponse(BaseModel):
     email: str
     system_role: Literal["admin", "user"]
     needs_setup: bool = False
+
+
+class ActiveWorkspace(BaseModel):
+    """Lightweight workspace proxy injected into the request-scoped contextvar.
+
+    Implements the structural ``CurrentWorkspace`` protocol expected by
+    ``deerflow.runtime.workspace_context``: only ``.id`` (str) and
+    ``.role`` (str) are required. We intentionally do *not* embed the
+    full ``WorkspaceRow`` here — the middleware needs to set the
+    contextvar on every request and an extra DB lookup just to populate
+    a name/slug we don't use yet would be wasted work.
+    """
+
+    id: str
+    role: str

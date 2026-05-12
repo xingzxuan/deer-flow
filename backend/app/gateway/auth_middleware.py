@@ -17,9 +17,11 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
+from app.gateway.auth.models import ActiveWorkspace
 from app.gateway.authz import _ALL_PERMISSIONS, AuthContext
 from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, get_internal_user, is_valid_internal_auth_token
 from deerflow.runtime.user_context import reset_current_user, set_current_user
+from deerflow.runtime.workspace_context import reset_current_workspace, set_current_workspace
 
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
@@ -119,8 +121,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # JWT-decode + DB-lookup pipeline a second time per request).
         request.state.user = user
         request.state.auth = AuthContext(user=user, permissions=_ALL_PERMISSIONS)
-        token = set_current_user(user)
+        user_token = set_current_user(user)
+
+        # Inject workspace contextvar from the JWT's wid/role claims.
+        # decode_token has already rejected legacy no-wid tokens upstream,
+        # so by the time we get here payload.wid is guaranteed non-None
+        # for cookie-authenticated requests. Internal-auth requests skip
+        # the workspace contextvar (they don't have a workspace scope —
+        # the internal user is a system actor).
+        ws_token = None
+        payload = getattr(request.state, "auth_payload", None)
+        if payload is not None and payload.wid is not None:
+            ws_token = set_current_workspace(ActiveWorkspace(id=payload.wid, role=payload.role or "owner"))
+
         try:
             return await call_next(request)
         finally:
-            reset_current_user(token)
+            if ws_token is not None:
+                reset_current_workspace(ws_token)
+            reset_current_user(user_token)
