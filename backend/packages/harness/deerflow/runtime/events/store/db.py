@@ -17,6 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deerflow.persistence.models.run_event import RunEventRow
 from deerflow.runtime.events.store.base import RunEventStore
 from deerflow.runtime.user_context import AUTO, _AutoSentinel, get_current_user, resolve_user_id
+from deerflow.runtime.workspace_context import AUTO as WORKSPACE_AUTO
+from deerflow.runtime.workspace_context import (
+    _AutoSentinel as _WorkspaceAutoSentinel,
+)
+from deerflow.runtime.workspace_context import (
+    get_current_workspace,
+    resolve_workspace_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +94,19 @@ class DbRunEventStore(RunEventStore):
         user = get_current_user()
         return str(user.id) if user is not None else None
 
+    @staticmethod
+    def _workspace_id_from_context() -> str | None:
+        """Soft read of workspace_id from contextvar for write paths.
+
+        Mirrors :meth:`_user_id_from_context`. Returns ``None`` (no stamp)
+        when no workspace is in context — typical for background worker
+        writes that fire outside an HTTP request. The DB column is
+        nullable through PR5 and becomes NOT NULL only after the alembic
+        0003 migration runs (verified by the backfill path).
+        """
+        workspace = get_current_workspace()
+        return str(workspace.id) if workspace is not None else None
+
     async def put(self, *, thread_id, run_id, event_type, category, content="", metadata=None, created_at=None):  # noqa: D401
         """Write a single event — low-frequency path only.
 
@@ -98,6 +119,7 @@ class DbRunEventStore(RunEventStore):
         content, metadata = self._truncate_trace(category, content, metadata)
         db_content, metadata = self._content_to_db(content, metadata)
         user_id = self._user_id_from_context()
+        workspace_id = self._workspace_id_from_context()
         async with self._sf() as session:
             async with session.begin():
                 # Use FOR UPDATE to serialize seq assignment within a thread.
@@ -109,6 +131,7 @@ class DbRunEventStore(RunEventStore):
                     thread_id=thread_id,
                     run_id=run_id,
                     user_id=user_id,
+                    workspace_id=workspace_id,
                     event_type=event_type,
                     category=category,
                     content=db_content,
@@ -123,6 +146,7 @@ class DbRunEventStore(RunEventStore):
         if not events:
             return []
         user_id = self._user_id_from_context()
+        workspace_id = self._workspace_id_from_context()
         async with self._sf() as session:
             async with session.begin():
                 # Get max seq for the thread (assume all events in batch belong to same thread).
@@ -143,6 +167,7 @@ class DbRunEventStore(RunEventStore):
                         thread_id=e["thread_id"],
                         run_id=e["run_id"],
                         user_id=e.get("user_id", user_id),
+                        workspace_id=e.get("workspace_id", workspace_id),
                         event_type=e["event_type"],
                         category=category,
                         content=db_content,
@@ -162,9 +187,13 @@ class DbRunEventStore(RunEventStore):
         before_seq=None,
         after_seq=None,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.list_messages")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.list_messages")
         stmt = select(RunEventRow).where(RunEventRow.thread_id == thread_id, RunEventRow.category == "message")
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(RunEventRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(RunEventRow.user_id == resolved_user_id)
         if before_seq is not None:
@@ -194,9 +223,13 @@ class DbRunEventStore(RunEventStore):
         event_types=None,
         limit=500,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.list_events")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.list_events")
         stmt = select(RunEventRow).where(RunEventRow.thread_id == thread_id, RunEventRow.run_id == run_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(RunEventRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(RunEventRow.user_id == resolved_user_id)
         if event_types:
@@ -215,13 +248,17 @@ class DbRunEventStore(RunEventStore):
         before_seq=None,
         after_seq=None,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.list_messages_by_run")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.list_messages_by_run")
         stmt = select(RunEventRow).where(
             RunEventRow.thread_id == thread_id,
             RunEventRow.run_id == run_id,
             RunEventRow.category == "message",
         )
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(RunEventRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(RunEventRow.user_id == resolved_user_id)
         if before_seq is not None:
@@ -246,9 +283,13 @@ class DbRunEventStore(RunEventStore):
         thread_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.count_messages")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.count_messages")
         stmt = select(func.count()).select_from(RunEventRow).where(RunEventRow.thread_id == thread_id, RunEventRow.category == "message")
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(RunEventRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(RunEventRow.user_id == resolved_user_id)
         async with self._sf() as session:
@@ -259,10 +300,14 @@ class DbRunEventStore(RunEventStore):
         thread_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.delete_by_thread")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.delete_by_thread")
         async with self._sf() as session:
             count_conditions = [RunEventRow.thread_id == thread_id]
+            if resolved_workspace_id is not None:
+                count_conditions.append(RunEventRow.workspace_id == resolved_workspace_id)
             if resolved_user_id is not None:
                 count_conditions.append(RunEventRow.user_id == resolved_user_id)
             count_stmt = select(func.count()).select_from(RunEventRow).where(*count_conditions)
@@ -278,10 +323,14 @@ class DbRunEventStore(RunEventStore):
         run_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="DbRunEventStore.delete_by_run")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="DbRunEventStore.delete_by_run")
         async with self._sf() as session:
             count_conditions = [RunEventRow.thread_id == thread_id, RunEventRow.run_id == run_id]
+            if resolved_workspace_id is not None:
+                count_conditions.append(RunEventRow.workspace_id == resolved_workspace_id)
             if resolved_user_id is not None:
                 count_conditions.append(RunEventRow.user_id == resolved_user_id)
             count_stmt = select(func.count()).select_from(RunEventRow).where(*count_conditions)

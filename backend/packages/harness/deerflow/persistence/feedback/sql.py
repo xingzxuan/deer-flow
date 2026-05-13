@@ -13,6 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deerflow.persistence.feedback.model import FeedbackRow
 from deerflow.runtime.user_context import AUTO, _AutoSentinel, resolve_user_id
+from deerflow.runtime.workspace_context import AUTO as WORKSPACE_AUTO
+from deerflow.runtime.workspace_context import (
+    _AutoSentinel as _WorkspaceAutoSentinel,
+)
+from deerflow.runtime.workspace_context import (
+    resolve_workspace_id,
+)
 
 
 class FeedbackRepository:
@@ -34,6 +41,7 @@ class FeedbackRepository:
         thread_id: str,
         rating: int,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         message_id: str | None = None,
         comment: str | None = None,
     ) -> dict:
@@ -41,11 +49,13 @@ class FeedbackRepository:
         if rating not in (1, -1):
             raise ValueError(f"rating must be +1 or -1, got {rating}")
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.create")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.create")
         row = FeedbackRow(
             feedback_id=str(uuid.uuid4()),
             run_id=run_id,
             thread_id=thread_id,
             user_id=resolved_user_id,
+            workspace_id=resolved_workspace_id,
             message_id=message_id,
             rating=rating,
             comment=comment,
@@ -62,11 +72,15 @@ class FeedbackRepository:
         feedback_id: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> dict | None:
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.get")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.get")
         async with self._sf() as session:
             row = await session.get(FeedbackRow, feedback_id)
             if row is None:
+                return None
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return None
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return None
@@ -79,9 +93,13 @@ class FeedbackRepository:
         *,
         limit: int = 100,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> list[dict]:
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.list_by_run")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.list_by_run")
         stmt = select(FeedbackRow).where(FeedbackRow.thread_id == thread_id, FeedbackRow.run_id == run_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(FeedbackRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(FeedbackRow.user_id == resolved_user_id)
         stmt = stmt.order_by(FeedbackRow.created_at.asc()).limit(limit)
@@ -95,9 +113,13 @@ class FeedbackRepository:
         *,
         limit: int = 100,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> list[dict]:
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.list_by_thread")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.list_by_thread")
         stmt = select(FeedbackRow).where(FeedbackRow.thread_id == thread_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(FeedbackRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(FeedbackRow.user_id == resolved_user_id)
         stmt = stmt.order_by(FeedbackRow.created_at.asc()).limit(limit)
@@ -110,11 +132,15 @@ class FeedbackRepository:
         feedback_id: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> bool:
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.delete")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.delete")
         async with self._sf() as session:
             row = await session.get(FeedbackRow, feedback_id)
             if row is None:
+                return False
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return False
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return False
@@ -129,18 +155,22 @@ class FeedbackRepository:
         thread_id: str,
         rating: int,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         comment: str | None = None,
     ) -> dict:
         """Create or update feedback for (thread_id, run_id, user_id). rating must be +1 or -1."""
         if rating not in (1, -1):
             raise ValueError(f"rating must be +1 or -1, got {rating}")
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.upsert")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.upsert")
         async with self._sf() as session:
             stmt = select(FeedbackRow).where(
                 FeedbackRow.thread_id == thread_id,
                 FeedbackRow.run_id == run_id,
                 FeedbackRow.user_id == resolved_user_id,
             )
+            if resolved_workspace_id is not None:
+                stmt = stmt.where(FeedbackRow.workspace_id == resolved_workspace_id)
             result = await session.execute(stmt)
             row = result.scalar_one_or_none()
             if row is not None:
@@ -153,6 +183,7 @@ class FeedbackRepository:
                     run_id=run_id,
                     thread_id=thread_id,
                     user_id=resolved_user_id,
+                    workspace_id=resolved_workspace_id,
                     rating=rating,
                     comment=comment,
                     created_at=datetime.now(UTC),
@@ -168,15 +199,19 @@ class FeedbackRepository:
         thread_id: str,
         run_id: str,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> bool:
         """Delete the current user's feedback for a run. Returns True if a record was deleted."""
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.delete_by_run")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.delete_by_run")
         async with self._sf() as session:
             stmt = select(FeedbackRow).where(
                 FeedbackRow.thread_id == thread_id,
                 FeedbackRow.run_id == run_id,
                 FeedbackRow.user_id == resolved_user_id,
             )
+            if resolved_workspace_id is not None:
+                stmt = stmt.where(FeedbackRow.workspace_id == resolved_workspace_id)
             result = await session.execute(stmt)
             row = result.scalar_one_or_none()
             if row is None:
@@ -190,10 +225,14 @@ class FeedbackRepository:
         thread_id: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> dict[str, dict]:
         """Return feedback grouped by run_id for a thread: {run_id: feedback_dict}."""
         resolved_user_id = resolve_user_id(user_id, method_name="FeedbackRepository.list_by_thread_grouped")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="FeedbackRepository.list_by_thread_grouped")
         stmt = select(FeedbackRow).where(FeedbackRow.thread_id == thread_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(FeedbackRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(FeedbackRow.user_id == resolved_user_id)
         async with self._sf() as session:

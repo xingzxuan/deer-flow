@@ -17,6 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deerflow.persistence.run.model import RunRow
 from deerflow.runtime.runs.store.base import RunStore
 from deerflow.runtime.user_context import AUTO, _AutoSentinel, resolve_user_id
+from deerflow.runtime.workspace_context import AUTO as WORKSPACE_AUTO
+from deerflow.runtime.workspace_context import (
+    _AutoSentinel as _WorkspaceAutoSentinel,
+)
+from deerflow.runtime.workspace_context import (
+    resolve_workspace_id,
+)
 
 
 class RunRepository(RunStore):
@@ -70,6 +77,7 @@ class RunRepository(RunStore):
         thread_id,
         assistant_id=None,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         status="pending",
         multitask_strategy="reject",
         metadata=None,
@@ -79,12 +87,14 @@ class RunRepository(RunStore):
         follow_up_to_run_id=None,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="RunRepository.put")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="RunRepository.put")
         now = datetime.now(UTC)
         row = RunRow(
             run_id=run_id,
             thread_id=thread_id,
             assistant_id=assistant_id,
             user_id=resolved_user_id,
+            workspace_id=resolved_workspace_id,
             status=status,
             multitask_strategy=multitask_strategy,
             metadata_json=self._safe_json(metadata) or {},
@@ -103,11 +113,15 @@ class RunRepository(RunStore):
         run_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="RunRepository.get")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="RunRepository.get")
         async with self._sf() as session:
             row = await session.get(RunRow, run_id)
             if row is None:
+                return None
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return None
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return None
@@ -118,10 +132,14 @@ class RunRepository(RunStore):
         thread_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         limit=100,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="RunRepository.list_by_thread")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="RunRepository.list_by_thread")
         stmt = select(RunRow).where(RunRow.thread_id == thread_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(RunRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(RunRow.user_id == resolved_user_id)
         stmt = stmt.order_by(RunRow.created_at.desc()).limit(limit)
@@ -142,11 +160,15 @@ class RunRepository(RunStore):
         run_id,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ):
         resolved_user_id = resolve_user_id(user_id, method_name="RunRepository.delete")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="RunRepository.delete")
         async with self._sf() as session:
             row = await session.get(RunRow, run_id)
             if row is None:
+                return
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return
