@@ -97,7 +97,7 @@ def test_sqlite_upgrade_adds_default_workspace_id_with_fk() -> None:
         _bootstrap_pre_pr4_schema(sync_url)
 
         cfg = _make_alembic_config(async_url)
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0001_users_default_workspace")
 
         _assert_column_present(sync_url)
 
@@ -112,7 +112,7 @@ def test_sqlite_downgrade_removes_default_workspace_id() -> None:
         _bootstrap_pre_pr4_schema(sync_url)
 
         cfg = _make_alembic_config(async_url)
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0001_users_default_workspace")
         _assert_column_present(sync_url)
 
         command.downgrade(cfg, "-1")

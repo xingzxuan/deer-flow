@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Index, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -21,6 +21,12 @@ class RunEventRow(Base):
         nullable=True,
         index=True,
         comment="会话所有者；为 NULL 表示鉴权引入之前的历史数据，新写入由 auth 中间件填充，启动期 orphan 迁移会回填存量",
+    )
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="所属 workspace；PR5 期间 nullable（回填中），PR5 0003 迁移后改 NOT NULL",
     )
     event_type: Mapped[str] = mapped_column(String(32), nullable=False, comment="事件子类型（具体含义由 category 决定，如 ai_message_chunk、tool_call、run_started）")
     category: Mapped[str] = mapped_column(String(16), nullable=False, comment='事件大类："message" 消息 / "trace" 追踪 / "lifecycle" 生命周期')

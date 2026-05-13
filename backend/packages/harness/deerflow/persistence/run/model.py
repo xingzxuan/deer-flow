@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Index, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from deerflow.persistence.base import Base
@@ -17,6 +17,12 @@ class RunRow(Base):
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="所属会话 ID（threads_meta.thread_id）")
     assistant_id: Mapped[str | None] = mapped_column(String(128), comment="使用的 Assistant ID（自定义智能体名）；为 NULL 表示默认 lead agent")
     user_id: Mapped[str | None] = mapped_column(String(64), index=True, comment="发起本次运行的用户 ID")
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="所属 workspace；PR5 期间 nullable（回填中），PR5 0003 迁移后改 NOT NULL",
+    )
     status: Mapped[str] = mapped_column(
         String(20),
         default="pending",
