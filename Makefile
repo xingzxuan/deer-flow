@@ -31,6 +31,7 @@ help:
 	@echo "  make start-daemon    - Start prod services in background (daemon mode)"
 	@echo "  make stop            - Stop all running services"
 	@echo "  make clean           - Clean up processes and temporary files"
+	@echo "  make migrate-paths   - Migrate legacy users/ tree into workspaces/ layout (DRY_RUN=1 to preview)"
 	@echo ""
 	@echo "Docker Production Commands:"
 	@echo "  make up              - Build and start production Docker services (localhost:2026)"
@@ -143,6 +144,14 @@ clean: stop
 	@-rm -rf backend/.langgraph_api 2>/dev/null || true
 	@-rm -rf logs/*.log 2>/dev/null || true
 	@echo "✓ Cleanup complete"
+
+# Lift legacy per-user paths into the per-workspace layout (PR6).
+# Pass DRY_RUN=1 to log the migration plan without writing.
+# DEFAULT_WORKSPACE=<wid> claims un-assigned users (defaults to legacy_workspace).
+migrate-paths:
+	@cd backend && PYTHONPATH=. uv run python scripts/migrate_paths_to_workspace.py \
+		$(if $(filter 1 true,$(DRY_RUN)),--dry-run) \
+		$(if $(DEFAULT_WORKSPACE),--default-workspace $(DEFAULT_WORKSPACE))
 
 # ==========================================
 # Docker Development Commands

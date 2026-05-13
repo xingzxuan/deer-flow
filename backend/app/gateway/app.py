@@ -175,6 +175,34 @@ async def _migrate_orphaned_threads(store, admin_user_id: str) -> int:
     return migrated
 
 
+def _check_path_migration_pending(app: FastAPI) -> None:
+    """Warn the operator if the PR4 legacy user-isolation layout still has content.
+
+    PR6 routes every new write into ``{base_dir}/workspaces/{wid}/...`` via
+    ``Paths``. Pre-PR6 installations have data at
+    ``{base_dir}/users/{uid}/...`` that needs ``make migrate-paths`` to lift
+    it under a workspace. We emit a warning at boot rather than crashing so
+    the gateway keeps serving (reads from the legacy tree still work via the
+    user_id branch of ``Paths.thread_dir``), but with a loud signal to run
+    the migration script.
+    """
+    from deerflow.config.paths import get_paths
+
+    legacy_users = get_paths().base_dir / "users"
+    if not legacy_users.exists():
+        return
+    try:
+        has_content = any(legacy_users.iterdir())
+    except OSError:
+        # Permission or transient FS issue — don't escalate; lifespan must succeed.
+        return
+    if has_content:
+        logger.warning(
+            "Legacy per-user layout detected at %s. Run `make migrate-paths` to lift it under the per-workspace layout (PR6).",
+            legacy_users,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
@@ -190,6 +218,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         raise RuntimeError(error_msg) from e
     config = get_gateway_config()
     logger.info(f"Starting API Gateway on {config.host}:{config.port}")
+
+    _check_path_migration_pending(app)
 
     # Initialize LangGraph runtime components (StreamBridge, RunManager, checkpointer, store)
     async with langgraph_runtime(app):
