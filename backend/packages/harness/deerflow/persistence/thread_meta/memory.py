@@ -33,15 +33,19 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         self,
         thread_id: str,
         user_id: str | None | _AutoSentinel,
+        workspace_id: str | None | _WorkspaceAutoSentinel,
         method_name: str,
     ) -> dict | None:
-        """Fetch a record and verify ownership. Returns a mutable copy, or None."""
-        resolved = resolve_user_id(user_id, method_name=method_name)
+        """Fetch a record and verify workspace + ownership. Returns a mutable copy, or None."""
+        resolved_user = resolve_user_id(user_id, method_name=method_name)
+        resolved_workspace = resolve_workspace_id(workspace_id, method_name=method_name)
         item = await self._store.aget(THREADS_NS, thread_id)
         if item is None:
             return None
         record = dict(item.value)
-        if resolved is not None and record.get("user_id") != resolved:
+        if resolved_workspace is not None and record.get("workspace_id") != resolved_workspace:
+            return None
+        if resolved_user is not None and record.get("user_id") != resolved_user:
             return None
         return record
 
@@ -73,8 +77,14 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         await self._store.aput(THREADS_NS, thread_id, record)
         return record
 
-    async def get(self, thread_id: str, *, user_id: str | None | _AutoSentinel = AUTO) -> dict | None:
-        return await self._get_owned_record(thread_id, user_id, "MemoryThreadMetaStore.get")
+    async def get(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
+    ) -> dict | None:
+        return await self._get_owned_record(thread_id, user_id, workspace_id, "MemoryThreadMetaStore.get")
 
     async def search(
         self,

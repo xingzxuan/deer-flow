@@ -71,13 +71,18 @@ class ThreadMetaRepository(ThreadMetaStore):
         thread_id: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> dict | None:
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.get")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.get")
+        stmt = select(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id)
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(ThreadMetaRow.workspace_id == resolved_workspace_id)
         async with self._sf() as session:
-            row = await session.get(ThreadMetaRow, thread_id)
+            row = (await session.execute(stmt)).scalar_one_or_none()
             if row is None:
                 return None
-            # Enforce owner filter unless explicitly bypassed (user_id=None).
+            # Owner filter still applies inside the workspace scope.
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return None
             return self._row_to_dict(row)

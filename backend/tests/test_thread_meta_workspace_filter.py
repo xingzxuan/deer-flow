@@ -102,3 +102,53 @@ class TestCreateWorkspace:
         record = await repo.create("t1", workspace_id=None)
         assert record["workspace_id"] is None
         await _cleanup()
+
+
+class TestGetWorkspace:
+    @pytest.mark.anyio
+    async def test_get_filters_by_workspace(self, tmp_path):
+        """Cross-workspace get returns None even when user_id matches."""
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+
+        token = _use_workspace("ws-beta")
+        try:
+            assert await repo.get("t1", user_id="alice") is None
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+
+    @pytest.mark.anyio
+    async def test_get_returns_row_in_same_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha",))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+            record = await repo.get("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        assert record is not None
+        assert record["thread_id"] == "t1"
+        assert record["workspace_id"] == "ws-alpha"
+
+    @pytest.mark.anyio
+    async def test_get_workspace_none_bypasses_filter(self, tmp_path):
+        """Explicit workspace_id=None lets migration scripts see any row."""
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha",))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+
+        token = _use_workspace("ws-beta")
+        try:
+            assert await repo.get("t1", user_id=None, workspace_id=None) is not None
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
