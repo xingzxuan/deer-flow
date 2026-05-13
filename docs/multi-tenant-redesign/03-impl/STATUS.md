@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-13，PR5 merge 进 docs branch 后
+> 上次更新：2026-05-13，PR6 merge 进 docs branch 后
 
 ## 一句话状态
 
-PR1 + PR2 + PR3 + PR4 + **PR5** 已 merge（PR3 时 RDS 上 11 张表 live 验证通过 + 7 项 LOCK 决策 sign-off + docs branch 已 push origin）。**PR5 (2026-05-13)** 落地：alembic 0002（4 表 + nullable workspace_id + FK + 复合索引）+ `scripts/backfill_workspace_id.py`（3 step 幂等：建 workspace per user → UPDATE 业务表 → legacy_workspace 兜底）+ alembic 0003（pre-flight 拒迁 + NOT NULL + UNIQUE(wid,tid)）。**3150 passed + 30 skipped + 16 pre-existing caplog flake**（与 PR5 无关，isolate 跑全 PASS）；+18 PR5 新测试覆盖。**T5.11 (ORM nullable=False) 显式推迟到 PR6**——见 [pr5 impl note 偏差说明](./pr5-business-workspace-id.md#偏差说明t511-推迟到-pr6)。**下一个：PR6（路由强校验 + Paths workspace 化 + 仓储 workspace_id 哨兵 + 文件迁移）**。
+PR1 + PR2 + PR3 + PR4 + PR5 + **PR6** 已 merge。**PR6 (2026-05-13)** 落地：4 个业务仓储 30+ 方法的 `workspace_id` 哨兵 + WHERE；`check_access` 升级三参数 (`thread_id, user_id, workspace_id`)；`@require_permission` 装饰器接入 `get_effective_workspace_id()`，跨 workspace **404 not 403**；`Paths` 切 workspace 维度（`{base}/workspaces/{wid}/threads/{tid}/...` + per-user state 嵌套）；`ThreadDataMiddleware` 切 workspace；`scripts/migrate_paths_to_workspace.py` 文件迁移（带 dry-run + 冲突分流）；lifespan 探测残留 `users/` 时 WARNING 引导跑 `make migrate-paths`；**T5.11 ORM `nullable=False` 一并翻**（PR5 推迟项就位）。**3214 passed + 30 skipped + 17 caplog flake**（PR5 末 3150 + 30 + 16；+64 测试，+1 flake——新 flake `test_path_migration_pending_warning::test_warns`，solo 跑 PASS）。**下一个：PR7（CI boundary 静态扫描）**。
 
 ## 8 PR 状态表
 
@@ -18,11 +18,11 @@ PR1 + PR2 + PR3 + PR4 + **PR5** 已 merge（PR3 时 RDS 上 11 张表 live 验�
 | **PR3** | ✅ merged | 7 (T3.1-T3.10) | merged into docs branch (`f63089ae..dda82640`) | [pr3-workspaces.md](./pr3-workspaces.md) |
 | **PR4** | ✅ merged | 14 (T4.1-T4.14) | merged into docs branch (`d98498b7..5c7753c0`) | [pr4-auth-workspace.md](./pr4-auth-workspace.md) |
 | **PR5** | ✅ merged | 11 (T5.1-T5.10 + T5.12) | merged into docs branch (`a7326978..30f2bd00`) | [pr5-business-workspace-id.md](./pr5-business-workspace-id.md) |
-| **PR6** | 🟡 pending | 0 | — | — |
+| **PR6** | ✅ merged | 13 (T5.11 + T6.1-T6.15) | merged into docs branch (`361e653d..87ea715c`) | [pr6-routes-paths-workspace.md](./pr6-routes-paths-workspace.md) |
 | **PR7** | 🟡 pending | 0 | — | — |
 | **PR8** | 🟡 pending | 0 | — | — |
 
-**测试基线**：**PR5 末 3150 passed + 30 skipped**（PR4 末 3136 + 26；+14 / +4 = 18 个 PR5 新测试：9 alembic 0002+0003 含 4 PG-skip + 9 backfill 含 dry-run/orchestrator/no-users 报错）。PR3 末 3134 + 25，PR2 末 3087。**16 个 caplog 排序 flake 持续存在**（test_jina_client / test_lead_agent_prompt / test_summarization_middleware 等）→ isolate 跑全 PASS，PR4 时 stash 验证过与 stage 无关；预存 issue，集中清理仍推迟到 follow-up。
+**测试基线**：**PR6 末 3214 passed + 30 skipped**（PR5 末 3150 + 30；+64 PR6 新测试，覆盖 thread_meta workspace_id 过滤、Run/Feedback/RunEvent 同款、require_permission probes、跨 workspace 404 e2e、Paths workspace 形态、ThreadDataMiddleware workspace、文件迁移脚本、lifespan warning）。PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**17 个 caplog 排序 flake 持续存在**（16 个 pre-existing + 1 新增 `test_path_migration_pending_warning::test_warns`）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
 
 ## 用户必须跟进的事（live verification / 决策）
 
@@ -46,9 +46,10 @@ PR1 + PR2 + PR3 + PR4 + **PR5** 已 merge（PR3 时 RDS 上 11 张表 live 验�
 | PR2 T2.9 | `backend/CLAUDE.md` Database 段更新 | README 已覆盖 80% 价值 | 写 PR3 时顺手补一句（agent 自己能做，不阻塞） |
 | PR4 T4.14 | 真机 `make dev` smoke 注册流程 | agent 无法实际起 gateway daemon | 用户跟进；命令清单见 [pr4-auth-workspace.md "Live smoke 命令"](./pr4-auth-workspace.md#live-smoke-命令用户跟进) |
 | PR4 follow-up | Regular user pre-PR4 backfill 脚本 | login 路径已 lazy backfill 覆盖；如果生产有大量预存 regular user，可补 batch 脚本 | 等真出现这个场景再写 |
-| PR4 follow-up | 16 个 pre-existing caplog flake 集中清理 | 跨多个 test 文件的 propagation 问题，与 PR4/5 无关 | 单独 follow-up 处理 |
-| PR5 T5.11 | ORM model.py `nullable=False` 翻转 | 当前翻会破 6 个 INSERT 站点（PR6 才补 workspace_id 哨兵）；DB 不变式由 alembic 0003 承载已足够 | **推迟到 PR6** 自然接入处；详见 [pr5 偏差说明](./pr5-business-workspace-id.md#偏差说明t511-推迟到-pr6) |
+| PR4 follow-up | 17 个 pre-existing caplog flake 集中清理 | 跨多个 test 文件的 propagation 问题，与 PR4/5/6 无关 | 单独 follow-up 处理 |
+| ~~PR5 T5.11~~ | ~~ORM model.py `nullable=False` 翻转~~ | **PR6 已落** (commit `87ea715c`) | — |
 | PR5 T5.12 真机 PG smoke | `alembic 0002 → backfill → 0003` 端到端 | agent 不能起 RDS 操作 | 用户跟进；命令清单见 [pr5-business-workspace-id.md "Live smoke 命令"](./pr5-business-workspace-id.md#live-smoke-命令用户跟进) |
+| PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 用户跟进；命令清单见 [pr6-routes-paths-workspace.md "Live smoke 命令"](./pr6-routes-paths-workspace.md#live-smoke-命令用户跟进) |
 
 ## 即将遇到的开放问题（plan 末尾列的，下个 session 处理）
 
@@ -60,7 +61,9 @@ PR1 + PR2 + PR3 + PR4 + **PR5** 已 merge（PR3 时 RDS 上 11 张表 live 验�
 
 ## 下一步建议
 
-**PR6（入口路由强校验 + Paths workspace 化 + 仓储 workspace_id 哨兵 + 文件迁移）**。同时接入 PR5 推迟的 T5.11（ORM `nullable=False`）—— ORM 翻转必须与仓储 `create()` 加 `workspace_id` 参数 + 6 个 INSERT 站点 + contextvar 接入一起做，PR6 是天然落点。plan 推荐 Inline 模式（路由 + 仓储 + Paths 强耦合，难拆 subagent）。
+**PR7（CI boundary 静态扫描）**。Stage 0 收尾的最后一项；plan 描述："静态扫描 ban `deerflow.* → app.*` 反向 import"。PR1-PR6 的代码已经维持这条边界，PR7 是把单测 `tests/test_harness_boundary.py` 上的检查升级为 grep 级 / CI workflow 级扫描，加更细粒度的禁止规则（如禁止 `app.*` 反向再 import 回 `deerflow.runtime.*` 等不应有的间接环）。**PR8 (service_accounts / api_keys / external_users schema) 可并行**，依赖只到 PR3 的 workspaces 表。
+
+PR6 经验回顾：plan 推荐 Inline 模式是对的，路由 + 仓储 + Paths 强耦合每一步都依赖前一步的接口形态。如果走 subagent 派单会反复阻塞在跨 task 的 signature 协调上。
 
 历史模式回顾：
 
