@@ -158,6 +158,57 @@ async def _step2_update_table_from_users(
     return int(rowcount)
 
 
+async def _ensure_legacy_workspace(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    dry_run: bool,
+) -> bool:
+    """Create the ``legacy_workspace`` anchor row idempotently.
+
+    The anchor is needed before Step 3 can point orphan rows at it. We
+    pick the platform admin (``system_role='admin'``) as owner; if no
+    admin exists yet we fall back to the oldest user. If the database
+    has no users at all we refuse to continue — running this script on
+    an unbootstrapped DB would create a workspace with no owner and the
+    FK to ``users`` would fail anyway.
+
+    Returns True if the workspace was just created (or would be, under
+    ``dry_run``). False if it already existed.
+    """
+    from deerflow.persistence.workspace.model import WorkspaceRow
+
+    async with session_factory() as session:
+        existing = await session.get(WorkspaceRow, LEGACY_WORKSPACE_ID)
+    if existing is not None:
+        return False
+
+    async with session_factory() as session:
+        admin_id = (await session.execute(select(UserRow.id).where(UserRow.system_role == "admin").order_by(UserRow.created_at).limit(1))).scalar_one_or_none()
+        if admin_id is None:
+            admin_id = (await session.execute(select(UserRow.id).order_by(UserRow.created_at).limit(1))).scalar_one_or_none()
+
+    if admin_id is None:
+        raise RuntimeError(
+            "Cannot create legacy_workspace: no users exist. Bootstrap an admin via /auth/initialize before running backfill.",
+        )
+
+    if dry_run:
+        logger.info("WOULD create legacy_workspace (id=%s) owned by user=%s", LEGACY_WORKSPACE_ID, admin_id)
+        return True
+
+    ws_repo = WorkspaceRepository(session_factory)
+    await ws_repo.create(
+        workspace_id=LEGACY_WORKSPACE_ID,
+        name=LEGACY_WORKSPACE_NAME,
+        slug=LEGACY_WORKSPACE_SLUG,
+        owner_id=admin_id,
+    )
+    m_repo = WorkspaceMembershipRepository(session_factory)
+    await m_repo.add(workspace_id=LEGACY_WORKSPACE_ID, user_id=admin_id, role="owner")
+    logger.info("Created legacy_workspace (id=%s) owned by user=%s", LEGACY_WORKSPACE_ID, admin_id)
+    return True
+
+
 async def _step3_assign_legacy_workspace(
     session_factory: async_sessionmaker[AsyncSession],
     table: str,
@@ -166,12 +217,28 @@ async def _step3_assign_legacy_workspace(
 ) -> int:
     """Assign LEGACY_WORKSPACE_ID to *table* rows still missing workspace_id.
 
-    Filled in by T5.7 (also responsible for ensuring the legacy workspace row exists).
+    Callers should ensure :func:`_ensure_legacy_workspace` has run first;
+    the orchestrator does this between Step 2 and Step 3. Orphan rows are
+    rows whose ``user_id`` was already NULL (or pointed at a deleted user)
+    so Step 2's correlated subquery left them untouched.
     """
-    _ = session_factory
-    _ = table
-    _ = dry_run
-    return 0
+    model = _TABLE_MODELS[table]
+    workspace_col = model.workspace_id
+
+    if dry_run:
+        count_stmt = select(func.count()).select_from(model).where(workspace_col.is_(None))
+        async with session_factory() as session:
+            count = (await session.execute(count_stmt)).scalar_one() or 0
+        logger.info("WOULD assign %d orphan row(s) in %s to legacy_workspace", count, table)
+        return int(count)
+
+    stmt = update(model).where(workspace_col.is_(None)).values(workspace_id=LEGACY_WORKSPACE_ID)
+    async with session_factory() as session:
+        result = await session.execute(stmt)
+        await session.commit()
+        rowcount = result.rowcount or 0
+    logger.info("Assigned %d orphan row(s) in %s to legacy_workspace", rowcount, table)
+    return int(rowcount)
 
 
 async def backfill(
@@ -189,6 +256,7 @@ async def backfill(
     report["users_workspaces_created"] = await _step1_create_workspaces_for_users(session_factory, dry_run=dry_run)
     for table in _BUSINESS_TABLES:
         report[f"{table}_from_users"] = await _step2_update_table_from_users(session_factory, table, dry_run=dry_run)
+    report["legacy_workspace_created"] = await _ensure_legacy_workspace(session_factory, dry_run=dry_run)
     for table in _BUSINESS_TABLES:
         report[f"{table}_legacy"] = await _step3_assign_legacy_workspace(session_factory, table, dry_run=dry_run)
 
