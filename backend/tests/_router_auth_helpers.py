@@ -38,6 +38,10 @@ from starlette.types import ASGIApp
 
 from app.gateway.auth.models import ActiveWorkspace, User
 from app.gateway.authz import AuthContext, Permissions
+from deerflow.runtime.user_context import (
+    reset_current_user,
+    set_current_user,
+)
 from deerflow.runtime.workspace_context import (
     reset_current_workspace,
     set_current_workspace,
@@ -82,16 +86,24 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         user_factory: Callable[[], User],
         workspace_factory: Callable[[], ActiveWorkspace | None] | None = None,
+        override_user_contextvar: bool = False,
     ) -> None:
         super().__init__(app)
         self._user_factory = user_factory
         self._workspace_factory = workspace_factory
+        # Tests that only need ``request.state.auth`` (the @require_permission
+        # path) keep the autouse user contextvar — flipping it to a per-call
+        # UUID would break legacy tests whose routes resolve paths via
+        # ``get_effective_user_id()``. Cross-user / cross-workspace tests opt
+        # in by setting this flag so the contextvar matches the request user.
+        self._override_user_contextvar = override_user_contextvar
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         user = self._user_factory()
         request.state.user = user
         request.state.auth = AuthContext(user=user, permissions=list(_STUB_PERMISSIONS))
 
+        user_token = set_current_user(user) if self._override_user_contextvar else None
         ws_token = None
         if self._workspace_factory is not None:
             workspace = self._workspace_factory()
@@ -103,12 +115,15 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
         finally:
             if ws_token is not None:
                 reset_current_workspace(ws_token)
+            if user_token is not None:
+                reset_current_user(user_token)
 
 
 def make_authed_test_app(
     *,
     user_factory: Callable[[], User] | None = None,
     workspace_factory: Callable[[], ActiveWorkspace | None] | None = None,
+    override_user_contextvar: bool = False,
     owner_check_passes: bool = True,
 ) -> FastAPI:
     """Build a FastAPI test app with stub auth + permissive thread_store.
@@ -133,6 +148,7 @@ def make_authed_test_app(
         _StubAuthMiddleware,
         user_factory=factory,
         workspace_factory=workspace_factory,
+        override_user_contextvar=override_user_contextvar,
     )
 
     repo = MagicMock()
