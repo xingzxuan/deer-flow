@@ -94,13 +94,17 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         limit: int = 100,
         offset: int = 0,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> list[dict]:
         resolved_user_id = resolve_user_id(user_id, method_name="MemoryThreadMetaStore.search")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="MemoryThreadMetaStore.search")
         filter_dict: dict[str, Any] = {}
         if metadata:
             filter_dict.update(metadata)
         if status:
             filter_dict["status"] = status
+        if resolved_workspace_id is not None:
+            filter_dict["workspace_id"] = resolved_workspace_id
         if resolved_user_id is not None:
             filter_dict["user_id"] = resolved_user_id
 
@@ -121,24 +125,45 @@ class MemoryThreadMetaStore(ThreadMetaStore):
             return True
         return record_user_id == user_id
 
-    async def update_display_name(self, thread_id: str, display_name: str, *, user_id: str | None | _AutoSentinel = AUTO) -> None:
-        record = await self._get_owned_record(thread_id, user_id, "MemoryThreadMetaStore.update_display_name")
+    async def update_display_name(
+        self,
+        thread_id: str,
+        display_name: str,
+        *,
+        user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
+    ) -> None:
+        record = await self._get_owned_record(thread_id, user_id, workspace_id, "MemoryThreadMetaStore.update_display_name")
         if record is None:
             return
         record["display_name"] = display_name
         record["updated_at"] = now_iso()
         await self._store.aput(THREADS_NS, thread_id, record)
 
-    async def update_status(self, thread_id: str, status: str, *, user_id: str | None | _AutoSentinel = AUTO) -> None:
-        record = await self._get_owned_record(thread_id, user_id, "MemoryThreadMetaStore.update_status")
+    async def update_status(
+        self,
+        thread_id: str,
+        status: str,
+        *,
+        user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
+    ) -> None:
+        record = await self._get_owned_record(thread_id, user_id, workspace_id, "MemoryThreadMetaStore.update_status")
         if record is None:
             return
         record["status"] = status
         record["updated_at"] = now_iso()
         await self._store.aput(THREADS_NS, thread_id, record)
 
-    async def update_metadata(self, thread_id: str, metadata: dict, *, user_id: str | None | _AutoSentinel = AUTO) -> None:
-        record = await self._get_owned_record(thread_id, user_id, "MemoryThreadMetaStore.update_metadata")
+    async def update_metadata(
+        self,
+        thread_id: str,
+        metadata: dict,
+        *,
+        user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
+    ) -> None:
+        record = await self._get_owned_record(thread_id, user_id, workspace_id, "MemoryThreadMetaStore.update_metadata")
         if record is None:
             return
         merged = dict(record.get("metadata") or {})
@@ -147,8 +172,14 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         record["updated_at"] = now_iso()
         await self._store.aput(THREADS_NS, thread_id, record)
 
-    async def delete(self, thread_id: str, *, user_id: str | None | _AutoSentinel = AUTO) -> None:
-        record = await self._get_owned_record(thread_id, user_id, "MemoryThreadMetaStore.delete")
+    async def delete(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
+    ) -> None:
+        record = await self._get_owned_record(thread_id, user_id, workspace_id, "MemoryThreadMetaStore.delete")
         if record is None:
             return
         await self._store.adelete(THREADS_NS, thread_id)

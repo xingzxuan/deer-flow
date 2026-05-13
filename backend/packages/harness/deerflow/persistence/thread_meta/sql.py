@@ -125,14 +125,19 @@ class ThreadMetaRepository(ThreadMetaStore):
         limit: int = 100,
         offset: int = 0,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> list[dict]:
         """Search threads with optional metadata and status filters.
 
-        Owner filter is enforced by default: caller must be in a user
-        context. Pass ``user_id=None`` to bypass (migration/CLI).
+        Both workspace and owner filters are enforced by default. Pass
+        ``workspace_id=None`` and / or ``user_id=None`` to bypass for
+        migration / CLI paths.
         """
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.search")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.search")
         stmt = select(ThreadMetaRow).order_by(ThreadMetaRow.updated_at.desc())
+        if resolved_workspace_id is not None:
+            stmt = stmt.where(ThreadMetaRow.workspace_id == resolved_workspace_id)
         if resolved_user_id is not None:
             stmt = stmt.where(ThreadMetaRow.user_id == resolved_user_id)
         if status:
@@ -154,12 +159,22 @@ class ThreadMetaRepository(ThreadMetaStore):
                 result = await session.execute(stmt)
                 return [self._row_to_dict(r) for r in result.scalars()]
 
-    async def _check_ownership(self, session: AsyncSession, thread_id: str, resolved_user_id: str | None) -> bool:
-        """Return True if the row exists and is owned (or filter bypassed)."""
-        if resolved_user_id is None:
-            return True  # explicit bypass
+    async def _check_ownership(
+        self,
+        session: AsyncSession,
+        thread_id: str,
+        resolved_user_id: str | None,
+        resolved_workspace_id: str | None,
+    ) -> bool:
+        """Return True if the row exists, is in scope, and is owned (or filter bypassed)."""
         row = await session.get(ThreadMetaRow, thread_id)
-        return row is not None and row.user_id == resolved_user_id
+        if row is None:
+            return False
+        if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
+            return False
+        if resolved_user_id is not None and row.user_id != resolved_user_id:
+            return False
+        return True
 
     async def update_display_name(
         self,
@@ -167,11 +182,13 @@ class ThreadMetaRepository(ThreadMetaStore):
         display_name: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> None:
         """Update the display_name (title) for a thread."""
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_display_name")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.update_display_name")
         async with self._sf() as session:
-            if not await self._check_ownership(session, thread_id, resolved_user_id):
+            if not await self._check_ownership(session, thread_id, resolved_user_id, resolved_workspace_id):
                 return
             await session.execute(update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id).values(display_name=display_name, updated_at=datetime.now(UTC)))
             await session.commit()
@@ -182,10 +199,12 @@ class ThreadMetaRepository(ThreadMetaStore):
         status: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> None:
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_status")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.update_status")
         async with self._sf() as session:
-            if not await self._check_ownership(session, thread_id, resolved_user_id):
+            if not await self._check_ownership(session, thread_id, resolved_user_id, resolved_workspace_id):
                 return
             await session.execute(update(ThreadMetaRow).where(ThreadMetaRow.thread_id == thread_id).values(status=status, updated_at=datetime.now(UTC)))
             await session.commit()
@@ -196,17 +215,21 @@ class ThreadMetaRepository(ThreadMetaStore):
         metadata: dict,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> None:
         """Merge ``metadata`` into ``metadata_json``.
 
         Read-modify-write inside a single session/transaction so concurrent
         callers see consistent state. No-op if the row does not exist or
-        the user_id check fails.
+        the workspace / user check fails.
         """
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.update_metadata")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.update_metadata")
         async with self._sf() as session:
             row = await session.get(ThreadMetaRow, thread_id)
             if row is None:
+                return
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return
@@ -221,11 +244,15 @@ class ThreadMetaRepository(ThreadMetaStore):
         thread_id: str,
         *,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
     ) -> None:
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.delete")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.delete")
         async with self._sf() as session:
             row = await session.get(ThreadMetaRow, thread_id)
             if row is None:
+                return
+            if resolved_workspace_id is not None and row.workspace_id != resolved_workspace_id:
                 return
             if resolved_user_id is not None and row.user_id != resolved_user_id:
                 return

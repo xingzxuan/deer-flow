@@ -152,3 +152,108 @@ class TestGetWorkspace:
         finally:
             reset_current_workspace(token)
             await _cleanup()
+
+
+class TestSearchUpdateDeleteWorkspace:
+    @pytest.mark.anyio
+    async def test_search_only_returns_current_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-beta")
+        try:
+            await repo.create("t2", user_id="alice")
+            rows = await repo.search(user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        ids = {r["thread_id"] for r in rows}
+        assert ids == {"t2"}
+
+    @pytest.mark.anyio
+    async def test_update_status_blocked_across_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-beta")
+        try:
+            await repo.update_status("t1", "busy", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+
+        token = _use_workspace("ws-alpha")
+        try:
+            row = await repo.get("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        assert row["status"] == "idle"
+
+    @pytest.mark.anyio
+    async def test_update_display_name_blocked_across_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice", display_name="A")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-beta")
+        try:
+            await repo.update_display_name("t1", "B", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-alpha")
+        try:
+            row = await repo.get("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        assert row["display_name"] == "A"
+
+    @pytest.mark.anyio
+    async def test_update_metadata_blocked_across_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice", metadata={"k": "alpha"})
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-beta")
+        try:
+            await repo.update_metadata("t1", {"k": "beta"}, user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-alpha")
+        try:
+            row = await repo.get("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        assert row["metadata"] == {"k": "alpha"}
+
+    @pytest.mark.anyio
+    async def test_delete_blocked_across_workspace(self, tmp_path):
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-beta")
+        try:
+            await repo.delete("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        token = _use_workspace("ws-alpha")
+        try:
+            row = await repo.get("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+            await _cleanup()
+        assert row is not None and row["thread_id"] == "t1"
