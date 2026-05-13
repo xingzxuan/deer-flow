@@ -257,6 +257,50 @@ async def test_ensure_legacy_workspace_refuses_when_no_users(tmp_path):
         await _close()
 
 
+async def test_backfill_dry_run_does_not_write(tmp_path):
+    """``backfill(..., dry_run=True)`` reports counts but writes nothing."""
+    sf = await _init_engine(tmp_path)
+    try:
+        await _seed_user(sf, email="admin@example.com", system_role="admin")
+        user_id = await _seed_user(sf, email="helen@example.com")
+        await _seed_business_row(sf, ThreadMetaRow, thread_id="t-owned", user_id=user_id)
+        await _seed_business_row(sf, ThreadMetaRow, thread_id="t-orphan", user_id=None)
+        await _seed_business_row(sf, RunRow, run_id="r-owned", thread_id="t-owned", user_id=user_id)
+
+        # Snapshot row counts BEFORE the dry run so we can confirm
+        # nothing changed AFTER.
+        async with sf() as session:
+            ws_before = len((await session.execute(select(WorkspaceRow))).scalars().all())
+            mem_before = len((await session.execute(select(WorkspaceMembershipRow))).scalars().all())
+            users_with_default_before = len((await session.execute(select(UserRow).where(UserRow.default_workspace_id.is_not(None)))).scalars().all())
+
+        report = await backfill(sf, dry_run=True)
+        assert report["dry_run"] is True
+        # Step 1 reports 2 candidates (admin + helen, both without default).
+        assert report["users_workspaces_created"] == 2
+        # Step 2 reports 0 because Step 1 didn't actually populate
+        # users.default_workspace_id under dry_run — the JOIN comes up empty.
+        assert report["threads_meta_from_users"] == 0
+        assert report["runs_from_users"] == 0
+        # Step 3 reports the 3 NULL business rows (t-owned, t-orphan, r-owned).
+        assert report["legacy_workspace_created"] is True
+        assert report["threads_meta_legacy"] == 2
+        assert report["runs_legacy"] == 1
+
+        # State did not change.
+        async with sf() as session:
+            ws_after = len((await session.execute(select(WorkspaceRow))).scalars().all())
+            mem_after = len((await session.execute(select(WorkspaceMembershipRow))).scalars().all())
+            users_with_default_after = len((await session.execute(select(UserRow).where(UserRow.default_workspace_id.is_not(None)))).scalars().all())
+            rows = (await session.execute(select(ThreadMetaRow.workspace_id))).scalars().all()
+        assert ws_after == ws_before
+        assert mem_after == mem_before
+        assert users_with_default_after == users_with_default_before
+        assert all(w is None for w in rows)
+    finally:
+        await _close()
+
+
 async def test_full_backfill_orchestrator(tmp_path):
     """End-to-end: backfill() runs all three steps and reports per-step counts."""
     sf = await _init_engine(tmp_path)
