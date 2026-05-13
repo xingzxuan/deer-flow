@@ -36,8 +36,12 @@ from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from app.gateway.auth.models import User
+from app.gateway.auth.models import ActiveWorkspace, User
 from app.gateway.authz import AuthContext, Permissions
+from deerflow.runtime.workspace_context import (
+    reset_current_workspace,
+    set_current_workspace,
+)
 
 # Default permission set granted to the stub user. Mirrors `_ALL_PERMISSIONS`
 # in authz.py — kept inline so the tests don't import a private symbol.
@@ -67,22 +71,44 @@ class _StubAuthMiddleware(BaseHTTPMiddleware):
     Mirrors what production ``AuthMiddleware`` does after the JWT decode
     + DB lookup short-circuit, so ``@require_permission`` finds an
     authenticated context and skips its own re-authentication path.
+
+    Optionally stamps the workspace contextvar too — needed by the PR6
+    decorator path that calls ``get_effective_workspace_id()`` before
+    delegating to ``check_access``.
     """
 
-    def __init__(self, app: ASGIApp, user_factory: Callable[[], User]) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        user_factory: Callable[[], User],
+        workspace_factory: Callable[[], ActiveWorkspace | None] | None = None,
+    ) -> None:
         super().__init__(app)
         self._user_factory = user_factory
+        self._workspace_factory = workspace_factory
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         user = self._user_factory()
         request.state.user = user
         request.state.auth = AuthContext(user=user, permissions=list(_STUB_PERMISSIONS))
-        return await call_next(request)
+
+        ws_token = None
+        if self._workspace_factory is not None:
+            workspace = self._workspace_factory()
+            if workspace is not None:
+                request.state.workspace = workspace
+                ws_token = set_current_workspace(workspace)
+        try:
+            return await call_next(request)
+        finally:
+            if ws_token is not None:
+                reset_current_workspace(ws_token)
 
 
 def make_authed_test_app(
     *,
     user_factory: Callable[[], User] | None = None,
+    workspace_factory: Callable[[], ActiveWorkspace | None] | None = None,
     owner_check_passes: bool = True,
 ) -> FastAPI:
     """Build a FastAPI test app with stub auth + permissive thread_store.
@@ -103,7 +129,11 @@ def make_authed_test_app(
     """
     factory = user_factory or _make_stub_user
     app = FastAPI()
-    app.add_middleware(_StubAuthMiddleware, user_factory=factory)
+    app.add_middleware(
+        _StubAuthMiddleware,
+        user_factory=factory,
+        workspace_factory=workspace_factory,
+    )
 
     repo = MagicMock()
     repo.check_access = AsyncMock(return_value=owner_check_passes)
