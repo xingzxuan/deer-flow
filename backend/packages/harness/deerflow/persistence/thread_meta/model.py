@@ -16,11 +16,11 @@ class ThreadMetaRow(Base):
     thread_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="会话主键（LangGraph thread_id）")
     assistant_id: Mapped[str | None] = mapped_column(String(128), index=True, comment="关联的 Assistant ID（自定义智能体名）；为 NULL 表示默认 lead agent")
     user_id: Mapped[str | None] = mapped_column(String(64), index=True, comment="会话所有者；为 NULL 表示历史无主数据")
-    workspace_id: Mapped[str | None] = mapped_column(
+    workspace_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=True,
-        comment="所属 workspace；PR5 期间 nullable（回填中），PR5 0003 迁移后改 NOT NULL",
+        nullable=False,
+        comment="所属 workspace。PR5 引入时 nullable 用于回填；alembic 0003 + PR6 仓储接入完成后 NOT NULL",
     )
     display_name: Mapped[str | None] = mapped_column(String(256), comment="会话显示名（自动生成的标题或用户手改）")
     status: Mapped[str] = mapped_column(String(20), default="idle", comment='会话状态："idle" 空闲 / "busy" 正在产出')

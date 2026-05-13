@@ -96,11 +96,18 @@ class TestCreateWorkspace:
             await _cleanup()
 
     @pytest.mark.anyio
-    async def test_create_workspace_none_bypasses(self, tmp_path):
-        """Explicit None creates an orphan row (migration / CLI path)."""
+    async def test_create_workspace_none_rejected_by_orm(self, tmp_path):
+        """After T5.11 (ORM nullable=False) explicit None creates fail at the DB layer.
+
+        Pre-PR6 the migration scripts relied on `workspace_id=None` to insert
+        orphan rows; that use is now restricted to **read** paths (filter
+        bypass). Writes must always carry a workspace.
+        """
+        import sqlalchemy
+
         repo = await _make_repo(tmp_path)
-        record = await repo.create("t1", workspace_id=None)
-        assert record["workspace_id"] is None
+        with pytest.raises((sqlalchemy.exc.IntegrityError, sqlalchemy.exc.DBAPIError)):
+            await repo.create("t1", workspace_id=None)
         await _cleanup()
 
 

@@ -28,11 +28,13 @@ from deerflow.runtime.workspace_context import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.no_auto_workspace
 def test_default_is_none():
     """Before any set, contextvar returns None."""
     assert get_current_workspace() is None
 
 
+@pytest.mark.no_auto_workspace
 def test_set_and_reset_roundtrip():
     """set_current_workspace returns a token that reset restores."""
     workspace = SimpleNamespace(id="ws-1", role="owner")
@@ -44,6 +46,7 @@ def test_set_and_reset_roundtrip():
     assert get_current_workspace() is None
 
 
+@pytest.mark.no_auto_workspace
 def test_require_current_workspace_raises_when_unset():
     """require_current_workspace raises RuntimeError if contextvar is unset."""
     assert get_current_workspace() is None
@@ -93,6 +96,7 @@ def test_default_workspace_id_is_default():
     assert DEFAULT_WORKSPACE_ID == "default"
 
 
+@pytest.mark.no_auto_workspace
 def test_effective_workspace_id_returns_default_when_no_workspace():
     """No workspace in context -> fallback to DEFAULT_WORKSPACE_ID."""
     assert get_effective_workspace_id() == "default"
@@ -132,6 +136,7 @@ def test_resolve_auto_reads_from_contextvar():
         reset_current_workspace(token)
 
 
+@pytest.mark.no_auto_workspace
 def test_resolve_auto_raises_when_unset():
     assert get_current_workspace() is None
     with pytest.raises(RuntimeError, match="workspace_id=AUTO but no workspace"):

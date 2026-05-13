@@ -40,12 +40,51 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+_BUSINESS_ROWS = (ThreadMetaRow, RunRow, FeedbackRow, RunEventRow)
+
+
+@pytest.fixture(autouse=True)
+def _relax_workspace_id_nullable():
+    """Simulate alembic 0002 (pre-backfill) state during these tests.
+
+    PR6 T5.11 flipped ``workspace_id`` to ``nullable=False`` on the four
+    business ORM models — production correctness comes from alembic 0003.
+    The backfill script's job is precisely to fill the rows that were
+    inserted between 0002 (column added, nullable) and 0003 (NOT NULL),
+    so tests for it must be able to insert NULL rows. We mutate
+    ``column.nullable`` for the four tables before ``create_all`` runs,
+    then restore on teardown so other tests see the production shape.
+    """
+    saved: list[tuple] = []
+    for model in _BUSINESS_ROWS:
+        col = model.__table__.c.workspace_id
+        saved.append((col, col.nullable))
+        col.nullable = True
+    try:
+        yield
+    finally:
+        for col, original in saved:
+            col.nullable = original
+
+
 async def _init_engine(tmp_path):
+    from sqlalchemy import delete
+
     from deerflow.persistence.engine import get_session_factory, init_engine
 
     url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
     await init_engine("sqlite", url=url, sqlite_dir=str(tmp_path))
-    return get_session_factory()
+    sf = get_session_factory()
+    # The PR6 conftest seeds an autouse user + workspace so business-row FKs
+    # resolve in the wider test suite. Backfill tests model "fresh DB needs
+    # backfill" semantics, so wipe those rows here. Order: clear the FK
+    # pointer first, then the rows.
+    async with sf() as session:
+        await session.execute(delete(WorkspaceMembershipRow))
+        await session.execute(delete(WorkspaceRow).where(WorkspaceRow.id == "test-workspace-autouse"))
+        await session.execute(delete(UserRow).where(UserRow.id == "test-user-autouse"))
+        await session.commit()
+    return sf
 
 
 async def _close():

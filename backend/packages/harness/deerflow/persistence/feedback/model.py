@@ -22,11 +22,11 @@ class FeedbackRow(Base):
     run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="关联的运行 ID（runs.run_id）")
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="关联的会话 ID（threads_meta.thread_id）")
     user_id: Mapped[str | None] = mapped_column(String(64), index=True, comment="反馈作者；为 NULL 表示历史无主数据")
-    workspace_id: Mapped[str | None] = mapped_column(
+    workspace_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=True,
-        comment="所属 workspace；PR5 期间 nullable（回填中），PR5 0003 迁移后改 NOT NULL",
+        nullable=False,
+        comment="所属 workspace。PR5 引入时 nullable 用于回填；alembic 0003 + PR6 仓储接入完成后 NOT NULL",
     )
     message_id: Mapped[str | None] = mapped_column(String(64), comment="可选的 RunEventStore 事件 ID；为 NULL 表示针对整次运行而非单条消息")
     rating: Mapped[int] = mapped_column(nullable=False, comment="评分：+1 点赞，-1 点踩")

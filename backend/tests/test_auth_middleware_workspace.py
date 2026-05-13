@@ -101,6 +101,7 @@ def test_public_path_skips_workspace_check() -> None:
     assert res.status_code == 200
 
 
+@pytest.mark.no_auto_workspace
 def test_workspace_contextvar_resets_between_requests() -> None:
     """After dispatch returns the contextvar must be clear (no leak across requests).
 

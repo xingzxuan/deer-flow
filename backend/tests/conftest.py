@@ -66,7 +66,7 @@ sys.modules["deerflow.subagents.executor"] = _executor_mock
 def _register_test_seed_listener() -> None:
     """Attach an after_create hook that seeds the autouse user + workspace."""
     try:
-        from sqlalchemy import event
+        from sqlalchemy import event, update
         from sqlalchemy.dialects.postgresql import insert as pg_insert
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -86,6 +86,13 @@ def _register_test_seed_listener() -> None:
         dialect = connection.dialect.name
         now = datetime.now(UTC)
 
+        # Seed both rows with a consistent ``default_workspace_id`` so the
+        # PR5 backfill script (which scans ``users.default_workspace_id IS
+        # NULL``) does not pick up the test fixtures as candidates.
+        # Insert user first with NULL default_workspace_id (chicken-and-egg
+        # with workspaces.owner_id FK), then workspace, then UPDATE the user
+        # row to point at the workspace so the PR5 backfill script does not
+        # pick up the autouse user as a candidate.
         user_values = {
             "id": "test-user-autouse",
             "email": "test-user-autouse@local",
@@ -119,6 +126,7 @@ def _register_test_seed_listener() -> None:
 
         connection.execute(user_stmt)
         connection.execute(ws_stmt)
+        connection.execute(update(UserRow.__table__).where(UserRow.__table__.c.id == "test-user-autouse").where(UserRow.__table__.c.default_workspace_id.is_(None)).values(default_workspace_id="test-workspace-autouse"))
 
     event.listen(Base.metadata, "after_create", _seed)
 
