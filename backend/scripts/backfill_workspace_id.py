@@ -30,7 +30,14 @@ import asyncio
 import logging
 from typing import Any
 
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.gateway.auth.workspace_slug import auto_slug_from_email, next_available_slug
+from deerflow.persistence.user.model import UserRow
+from deerflow.persistence.workspace import WorkspaceRepository
+from deerflow.persistence.workspace.sql import SLUG_BLACKLIST
+from deerflow.persistence.workspace_membership import WorkspaceMembershipRepository
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +58,49 @@ async def _step1_create_workspaces_for_users(
 ) -> int:
     """Create one workspace + owner membership for each user missing default_workspace_id.
 
-    Filled in by T5.5.
+    Returns the count of users a workspace was created for. Idempotent —
+    users that already have ``default_workspace_id`` are skipped so a
+    crashed run can resume safely.
     """
-    _ = session_factory  # silenced until T5.5
-    _ = dry_run
-    return 0
+    async with session_factory() as session:
+        result = await session.execute(select(UserRow.id, UserRow.email).where(UserRow.default_workspace_id.is_(None)))
+        candidates = [(row.id, row.email) for row in result]
+
+    if not candidates:
+        return 0
+
+    ws_repo = WorkspaceRepository(session_factory)
+    m_repo = WorkspaceMembershipRepository(session_factory)
+    created = 0
+    for user_id, email in candidates:
+        base_slug = auto_slug_from_email(email)
+
+        async def slug_exists(s: str) -> bool:
+            if s in SLUG_BLACKLIST:
+                return True
+            return (await ws_repo.get_by_slug(s)) is not None
+
+        unique_slug = await next_available_slug(base_slug, exists_check=slug_exists)
+
+        if dry_run:
+            logger.info("WOULD create workspace for user=%s email=%s slug=%s", user_id, email, unique_slug)
+            created += 1
+            continue
+
+        display_local = email.split("@", 1)[0]
+        workspace = await ws_repo.create(
+            name=f"{display_local}'s Workspace"[:64],
+            slug=unique_slug,
+            owner_id=user_id,
+        )
+        await m_repo.add(workspace_id=workspace["id"], user_id=user_id, role="owner")
+        async with session_factory() as session:
+            await session.execute(update(UserRow).where(UserRow.id == user_id).values(default_workspace_id=workspace["id"]))
+            await session.commit()
+        created += 1
+        logger.info("Created workspace %s (slug=%s) for user=%s", workspace["id"], unique_slug, user_id)
+
+    return created
 
 
 async def _step2_update_table_from_users(
