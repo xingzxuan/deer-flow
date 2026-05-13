@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deerflow.persistence.thread_meta.base import ThreadMetaStore
 from deerflow.persistence.thread_meta.model import ThreadMetaRow
 from deerflow.runtime.user_context import AUTO, _AutoSentinel, resolve_user_id
+from deerflow.runtime.workspace_context import AUTO as WORKSPACE_AUTO
+from deerflow.runtime.workspace_context import (
+    _AutoSentinel as _WorkspaceAutoSentinel,
+)
+from deerflow.runtime.workspace_context import (
+    resolve_workspace_id,
+)
 
 
 class ThreadMetaRepository(ThreadMetaStore):
@@ -33,17 +40,21 @@ class ThreadMetaRepository(ThreadMetaStore):
         *,
         assistant_id: str | None = None,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         display_name: str | None = None,
         metadata: dict | None = None,
     ) -> dict:
-        # Auto-resolve user_id from contextvar when AUTO; explicit None
-        # creates an orphan row (used by migration scripts).
+        # Auto-resolve both user_id and workspace_id from contextvars when
+        # AUTO; explicit None creates an orphan row (used by migration
+        # scripts that intentionally bypass scope).
         resolved_user_id = resolve_user_id(user_id, method_name="ThreadMetaRepository.create")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="ThreadMetaRepository.create")
         now = datetime.now(UTC)
         row = ThreadMetaRow(
             thread_id=thread_id,
             assistant_id=assistant_id,
             user_id=resolved_user_id,
+            workspace_id=resolved_workspace_id,
             display_name=display_name,
             metadata_json=metadata or {},
             created_at=now,

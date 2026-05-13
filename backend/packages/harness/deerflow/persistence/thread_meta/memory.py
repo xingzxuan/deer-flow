@@ -13,6 +13,13 @@ from langgraph.store.base import BaseStore
 
 from deerflow.persistence.thread_meta.base import ThreadMetaStore
 from deerflow.runtime.user_context import AUTO, _AutoSentinel, resolve_user_id
+from deerflow.runtime.workspace_context import AUTO as WORKSPACE_AUTO
+from deerflow.runtime.workspace_context import (
+    _AutoSentinel as _WorkspaceAutoSentinel,
+)
+from deerflow.runtime.workspace_context import (
+    resolve_workspace_id,
+)
 from deerflow.utils.time import coerce_iso, now_iso
 
 THREADS_NS: tuple[str, ...] = ("threads",)
@@ -44,15 +51,18 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         *,
         assistant_id: str | None = None,
         user_id: str | None | _AutoSentinel = AUTO,
+        workspace_id: str | None | _WorkspaceAutoSentinel = WORKSPACE_AUTO,
         display_name: str | None = None,
         metadata: dict | None = None,
     ) -> dict:
         resolved_user_id = resolve_user_id(user_id, method_name="MemoryThreadMetaStore.create")
+        resolved_workspace_id = resolve_workspace_id(workspace_id, method_name="MemoryThreadMetaStore.create")
         now = now_iso()
         record: dict[str, Any] = {
             "thread_id": thread_id,
             "assistant_id": assistant_id,
             "user_id": resolved_user_id,
+            "workspace_id": resolved_workspace_id,
             "display_name": display_name,
             "status": "idle",
             "metadata": metadata or {},

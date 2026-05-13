@@ -37,7 +37,8 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = [
-    "no_auto_user: disable the conftest autouse contextvar fixture for this test",
+    "no_auto_user: disable the conftest autouse user contextvar fixture for this test",
+    "no_auto_workspace: disable the conftest autouse workspace contextvar fixture for this test",
     "postgres: requires a Postgres testcontainer (Docker daemon); skipped if unavailable",
 ]
 

@@ -45,6 +45,87 @@ _executor_mock.get_background_task_result = MagicMock()
 sys.modules["deerflow.subagents.executor"] = _executor_mock
 
 
+# ---------------------------------------------------------------------------
+# Auto-seed test workspace + user when Base.metadata.create_all() runs
+# ---------------------------------------------------------------------------
+#
+# PR6 makes every business-row INSERT carry ``workspace_id`` (resolved
+# from the autouse workspace contextvar = "test-workspace-autouse"). The
+# Stage 0 schema has a NOT NULL FK from those rows to ``workspaces`` and
+# from ``workspaces.owner_id`` to ``users``. Without the seed below,
+# every legacy repo test would fail with a FOREIGN KEY error the moment
+# it tries to insert a thread.
+#
+# We register an ``after_create`` hook on ``Base.metadata`` so that
+# whenever ``init_engine`` finishes ``create_all()`` (the auto-create
+# path used by tests and dev), the two anchor rows are present. Alembic
+# migration tests don't trigger create_all so they are unaffected and
+# keep exercising real FK constraints in isolation.
+
+
+def _register_test_seed_listener() -> None:
+    """Attach an after_create hook that seeds the autouse user + workspace."""
+    try:
+        from sqlalchemy import event
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        from deerflow.persistence.base import Base
+        from deerflow.persistence.user.model import UserRow
+        from deerflow.persistence.workspace.model import WorkspaceRow
+    except ImportError:
+        return
+
+    from datetime import UTC, datetime
+
+    def _seed(_target, connection, **kw):  # noqa: ARG001
+        tables = {t.name for t in kw.get("tables", []) or []}
+        if "users" not in tables or "workspaces" not in tables:
+            return
+
+        dialect = connection.dialect.name
+        now = datetime.now(UTC)
+
+        user_values = {
+            "id": "test-user-autouse",
+            "email": "test-user-autouse@local",
+            "password_hash": None,
+            "system_role": "user",
+            "created_at": now,
+            "oauth_provider": None,
+            "oauth_id": None,
+            "needs_setup": False,
+            "token_version": 0,
+            "default_workspace_id": None,
+        }
+        workspace_values = {
+            "id": "test-workspace-autouse",
+            "name": "Autouse Test Workspace",
+            "slug": "autouse-test",
+            "status": "active",
+            "owner_id": "test-user-autouse",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        if dialect == "sqlite":
+            user_stmt = sqlite_insert(UserRow.__table__).values(**user_values).on_conflict_do_nothing(index_elements=["id"])
+            ws_stmt = sqlite_insert(WorkspaceRow.__table__).values(**workspace_values).on_conflict_do_nothing(index_elements=["id"])
+        elif dialect == "postgresql":
+            user_stmt = pg_insert(UserRow.__table__).values(**user_values).on_conflict_do_nothing(index_elements=["id"])
+            ws_stmt = pg_insert(WorkspaceRow.__table__).values(**workspace_values).on_conflict_do_nothing(index_elements=["id"])
+        else:
+            return
+
+        connection.execute(user_stmt)
+        connection.execute(ws_stmt)
+
+    event.listen(Base.metadata, "after_create", _seed)
+
+
+_register_test_seed_listener()
+
+
 @pytest.fixture()
 def provisioner_module():
     """Load docker/provisioner/app.py as an importable test module.
@@ -117,3 +198,34 @@ def _auto_user_context(request):
         yield
     finally:
         reset_current_user(token)
+
+
+@pytest.fixture(autouse=True)
+def _auto_workspace_context(request):
+    """Inject a default ``test-workspace-autouse`` into the workspace contextvar.
+
+    Mirror of :func:`_auto_user_context`. PR6 adds ``workspace_id=AUTO``
+    sentinels to every repository method; without an autouse workspace
+    fixture every legacy persistence test would raise RuntimeError.
+
+    Opt-out via ``@pytest.mark.no_auto_workspace``.
+    """
+    if request.node.get_closest_marker("no_auto_workspace"):
+        yield
+        return
+
+    try:
+        from deerflow.runtime.workspace_context import (
+            reset_current_workspace,
+            set_current_workspace,
+        )
+    except ImportError:
+        yield
+        return
+
+    workspace = SimpleNamespace(id="test-workspace-autouse", role="owner")
+    token = set_current_workspace(workspace)
+    try:
+        yield
+    finally:
+        reset_current_workspace(token)
