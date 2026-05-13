@@ -238,6 +238,36 @@ class TestSearchUpdateDeleteWorkspace:
         assert row["metadata"] == {"k": "alpha"}
 
     @pytest.mark.anyio
+    async def test_check_access_cross_workspace_false(self, tmp_path):
+        """`check_access` returns False for cross-workspace, even with matching user_id."""
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        try:
+            assert await repo.check_access("t1", "alice", "ws-beta") is False
+            assert await repo.check_access("t1", "alice", "ws-alpha") is True
+        finally:
+            await _cleanup()
+
+    @pytest.mark.anyio
+    async def test_check_access_strict_cross_workspace_false(self, tmp_path):
+        """require_existing=True path also denies cross-workspace."""
+        repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
+        token = _use_workspace("ws-alpha")
+        try:
+            await repo.create("t1", user_id="alice")
+        finally:
+            reset_current_workspace(token)
+        try:
+            assert await repo.check_access("t1", "alice", "ws-beta", require_existing=True) is False
+            assert await repo.check_access("t1", "alice", "ws-alpha", require_existing=True) is True
+        finally:
+            await _cleanup()
+
+    @pytest.mark.anyio
     async def test_delete_blocked_across_workspace(self, tmp_path):
         repo = await _make_repo(tmp_path, workspaces=("ws-alpha", "ws-beta"))
         token = _use_workspace("ws-alpha")

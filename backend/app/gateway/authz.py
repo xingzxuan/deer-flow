@@ -268,24 +268,27 @@ def require_permission(
 
             # Owner check for thread-specific resources.
             #
-            # 2.0-rc moved thread metadata into the SQL persistence layer
-            # (``threads_meta`` table). We verify ownership via
-            # ``ThreadMetaStore.check_access``: it returns True for
-            # missing rows (untracked legacy thread) and for rows whose
-            # ``user_id`` is NULL (shared / pre-auth data), so this is
-            # strict-deny rather than strict-allow — only an *existing*
-            # row with a *different* user_id triggers 404.
+            # PR6: ``check_access`` now takes ``workspace_id`` as the third
+            # positional argument; cross-workspace always denies regardless
+            # of user_id match. We pull workspace_id from the contextvar
+            # AuthMiddleware sets per request (and fall back to "default"
+            # in no-auth dev mode so smoke flows keep working). Failures
+            # convert to **404**, not 403, so the response never leaks the
+            # existence of a thread that belongs to a different tenant.
             if owner_check:
                 thread_id = kwargs.get("thread_id")
                 if thread_id is None:
                     raise ValueError("require_permission with owner_check=True requires 'thread_id' parameter")
 
                 from app.gateway.deps import get_thread_store
+                from deerflow.runtime.workspace_context import get_effective_workspace_id
 
+                workspace_id = get_effective_workspace_id()
                 thread_store = get_thread_store(request)
                 allowed = await thread_store.check_access(
                     thread_id,
                     str(auth.user.id),
+                    workspace_id,
                     require_existing=require_existing,
                 )
                 if not allowed:

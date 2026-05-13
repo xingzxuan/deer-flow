@@ -87,32 +87,36 @@ class ThreadMetaRepository(ThreadMetaStore):
                 return None
             return self._row_to_dict(row)
 
-    async def check_access(self, thread_id: str, user_id: str, *, require_existing: bool = False) -> bool:
-        """Check if ``user_id`` has access to ``thread_id``.
+    async def check_access(
+        self,
+        thread_id: str,
+        user_id: str,
+        workspace_id: str,
+        *,
+        require_existing: bool = False,
+    ) -> bool:
+        """Check if ``user_id`` in ``workspace_id`` has access to ``thread_id``.
 
-        Two modes — one row, two distinct semantics depending on what
-        the caller is about to do:
+        Three filters layered, from outside in:
 
-        - ``require_existing=False`` (default, permissive):
-          Returns True for: row missing (untracked legacy thread),
-          ``row.user_id`` is None (shared / pre-auth data),
-          or ``row.user_id == user_id``. Use for **read-style**
-          decorators where treating an untracked thread as accessible
-          preserves backward-compat.
-
-        - ``require_existing=True`` (strict):
-          Returns True **only** when the row exists AND
-          (``row.user_id == user_id`` OR ``row.user_id is None``).
-          Use for **destructive / mutating** decorators (DELETE, PATCH,
-          state-update) so a thread that has *already been deleted*
-          cannot be re-targeted by any caller — closing the
-          delete-idempotence cross-user gap where the row vanishing
-          made every other user appear to "own" it.
+        - Cross-workspace is **always** denied (returns False), even when
+          the row exists and ``user_id`` matches. The decorator layer
+          converts a False into a 404 so cross-tenant access never leaks
+          the existence of a thread.
+        - Missing row honours ``require_existing``: False by default
+          (permissive — untracked legacy threads still readable), True
+          for destructive routes (DELETE / PATCH) so a re-targeted ghost
+          row cannot be claimed.
+        - Within the workspace, ``row.user_id IS NULL`` keeps the legacy
+          "shared / pre-auth" semantics — readable by anyone in the
+          workspace. ``row.user_id == user_id`` is the normal case.
         """
         async with self._sf() as session:
             row = await session.get(ThreadMetaRow, thread_id)
             if row is None:
                 return not require_existing
+            if row.workspace_id is not None and row.workspace_id != workspace_id:
+                return False
             if row.user_id is None:
                 return True
             return row.user_id == user_id

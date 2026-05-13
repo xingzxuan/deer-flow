@@ -64,21 +64,21 @@ class TestThreadMetaRepository:
     @pytest.mark.anyio
     async def test_check_access_no_record_allows(self, tmp_path):
         repo = await _make_repo(tmp_path)
-        assert await repo.check_access("unknown", "user1") is True
+        assert await repo.check_access("unknown", "user1", "test-workspace-autouse") is True
         await _cleanup()
 
     @pytest.mark.anyio
     async def test_check_access_owner_matches(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.create("t1", user_id="user1")
-        assert await repo.check_access("t1", "user1") is True
+        assert await repo.check_access("t1", "user1", "test-workspace-autouse") is True
         await _cleanup()
 
     @pytest.mark.anyio
     async def test_check_access_owner_mismatch(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.create("t1", user_id="user1")
-        assert await repo.check_access("t1", "user2") is False
+        assert await repo.check_access("t1", "user2", "test-workspace-autouse") is False
         await _cleanup()
 
     @pytest.mark.anyio
@@ -87,7 +87,7 @@ class TestThreadMetaRepository:
         # Explicit user_id=None to bypass the new AUTO default that
         # would otherwise pick up the test user from the autouse fixture.
         await repo.create("t1", user_id=None)
-        assert await repo.check_access("t1", "anyone") is True
+        assert await repo.check_access("t1", "anyone", "test-workspace-autouse") is True
         await _cleanup()
 
     @pytest.mark.anyio
@@ -99,21 +99,21 @@ class TestThreadMetaRepository:
         caller "claim" it as untracked. The strict mode demands a row.
         """
         repo = await _make_repo(tmp_path)
-        assert await repo.check_access("never-existed", "user1", require_existing=True) is False
+        assert await repo.check_access("never-existed", "user1", "test-workspace-autouse", require_existing=True) is False
         await _cleanup()
 
     @pytest.mark.anyio
     async def test_check_access_strict_owner_match_allowed(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.create("t1", user_id="user1")
-        assert await repo.check_access("t1", "user1", require_existing=True) is True
+        assert await repo.check_access("t1", "user1", "test-workspace-autouse", require_existing=True) is True
         await _cleanup()
 
     @pytest.mark.anyio
     async def test_check_access_strict_owner_mismatch_denied(self, tmp_path):
         repo = await _make_repo(tmp_path)
         await repo.create("t1", user_id="user1")
-        assert await repo.check_access("t1", "user2", require_existing=True) is False
+        assert await repo.check_access("t1", "user2", "test-workspace-autouse", require_existing=True) is False
         await _cleanup()
 
     @pytest.mark.anyio
@@ -126,7 +126,7 @@ class TestThreadMetaRepository:
         """
         repo = await _make_repo(tmp_path)
         await repo.create("t1", user_id=None)
-        assert await repo.check_access("t1", "anyone", require_existing=True) is True
+        assert await repo.check_access("t1", "anyone", "test-workspace-autouse", require_existing=True) is True
         await _cleanup()
 
     @pytest.mark.anyio

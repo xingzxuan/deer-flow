@@ -116,10 +116,20 @@ class MemoryThreadMetaStore(ThreadMetaStore):
         )
         return [self._item_to_dict(item) for item in items]
 
-    async def check_access(self, thread_id: str, user_id: str, *, require_existing: bool = False) -> bool:
+    async def check_access(
+        self,
+        thread_id: str,
+        user_id: str,
+        workspace_id: str,
+        *,
+        require_existing: bool = False,
+    ) -> bool:
         item = await self._store.aget(THREADS_NS, thread_id)
         if item is None:
             return not require_existing
+        record_workspace_id = item.value.get("workspace_id")
+        if record_workspace_id is not None and record_workspace_id != workspace_id:
+            return False
         record_user_id = item.value.get("user_id")
         if record_user_id is None:
             return True
