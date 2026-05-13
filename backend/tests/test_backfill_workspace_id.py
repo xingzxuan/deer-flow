@@ -16,10 +16,17 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from deerflow.persistence.feedback.model import FeedbackRow
+from deerflow.persistence.models.run_event import RunEventRow
+from deerflow.persistence.run.model import RunRow
+from deerflow.persistence.thread_meta.model import ThreadMetaRow
 from deerflow.persistence.user.model import UserRow
 from deerflow.persistence.workspace.model import WorkspaceRow
 from deerflow.persistence.workspace_membership.model import WorkspaceMembershipRow
-from scripts.backfill_workspace_id import _step1_create_workspaces_for_users
+from scripts.backfill_workspace_id import (
+    _step1_create_workspaces_for_users,
+    _step2_update_table_from_users,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -49,6 +56,12 @@ async def _seed_user(sf, *, email: str, default_workspace_id: str | None = None)
         session.add(UserRow(id=user_id, email=email, default_workspace_id=default_workspace_id))
         await session.commit()
     return user_id
+
+
+async def _seed_business_row(sf, model, **fields) -> None:
+    async with sf() as session:
+        session.add(model(**fields))
+        await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +117,67 @@ async def test_step1_is_idempotent(tmp_path):
             mem_count = len((await session.execute(select(WorkspaceMembershipRow))).scalars().all())
         assert ws_count == 1
         assert mem_count == 1
+    finally:
+        await _close()
+
+
+async def test_backfill_updates_4_tables_from_users(tmp_path):
+    """Step 2 propagates each user's default_workspace_id into 4 business tables."""
+    sf = await _init_engine(tmp_path)
+    try:
+        user_id = await _seed_user(sf, email="dave@example.com")
+        # Pre-seed business rows owned by the user with NULL workspace_id.
+        await _seed_business_row(sf, ThreadMetaRow, thread_id="t-1", user_id=user_id)
+        await _seed_business_row(sf, RunRow, run_id="r-1", thread_id="t-1", user_id=user_id)
+        await _seed_business_row(sf, FeedbackRow, feedback_id="f-1", thread_id="t-1", run_id="r-1", user_id=user_id, rating=1)
+        await _seed_business_row(sf, RunEventRow, thread_id="t-1", run_id="r-1", user_id=user_id, event_type="lifecycle_started", category="lifecycle", seq=1)
+
+        # Step 1 first so users.default_workspace_id is populated.
+        await _step1_create_workspaces_for_users(sf, dry_run=False)
+
+        async with sf() as session:
+            ws_id = (await session.execute(select(WorkspaceRow.id))).scalar_one()
+
+        # Step 2 updates each table.
+        for table in ("threads_meta", "runs", "feedback", "run_events"):
+            count = await _step2_update_table_from_users(sf, table, dry_run=False)
+            assert count == 1, table
+
+        async with sf() as session:
+            tm = (await session.execute(select(ThreadMetaRow))).scalar_one()
+            run = (await session.execute(select(RunRow))).scalar_one()
+            fb = (await session.execute(select(FeedbackRow))).scalar_one()
+            ev = (await session.execute(select(RunEventRow))).scalar_one()
+        assert tm.workspace_id == ws_id
+        assert run.workspace_id == ws_id
+        assert fb.workspace_id == ws_id
+        assert ev.workspace_id == ws_id
+
+        # Re-running Step 2 is a no-op (filtered by workspace_id IS NULL).
+        for table in ("threads_meta", "runs", "feedback", "run_events"):
+            assert await _step2_update_table_from_users(sf, table, dry_run=False) == 0
+    finally:
+        await _close()
+
+
+async def test_backfill_step2_isolates_per_user(tmp_path):
+    """Two users with different default workspaces get their own threads tagged independently."""
+    sf = await _init_engine(tmp_path)
+    try:
+        u_eve = await _seed_user(sf, email="eve@example.com")
+        u_frank = await _seed_user(sf, email="frank@example.com")
+        await _seed_business_row(sf, ThreadMetaRow, thread_id="t-eve", user_id=u_eve)
+        await _seed_business_row(sf, ThreadMetaRow, thread_id="t-frank", user_id=u_frank)
+
+        await _step1_create_workspaces_for_users(sf, dry_run=False)
+        await _step2_update_table_from_users(sf, "threads_meta", dry_run=False)
+
+        async with sf() as session:
+            rows = {r.thread_id: r.workspace_id for r in (await session.execute(select(ThreadMetaRow))).scalars().all()}
+            users = {u.id: u.default_workspace_id for u in (await session.execute(select(UserRow))).scalars().all()}
+        assert rows["t-eve"] == users[u_eve]
+        assert rows["t-frank"] == users[u_frank]
+        assert rows["t-eve"] != rows["t-frank"]
     finally:
         await _close()
 

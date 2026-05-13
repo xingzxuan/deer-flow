@@ -30,10 +30,15 @@ import asyncio
 import logging
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.gateway.auth.workspace_slug import auto_slug_from_email, next_available_slug
+from deerflow.persistence.base import Base
+from deerflow.persistence.feedback.model import FeedbackRow
+from deerflow.persistence.models.run_event import RunEventRow
+from deerflow.persistence.run.model import RunRow
+from deerflow.persistence.thread_meta.model import ThreadMetaRow
 from deerflow.persistence.user.model import UserRow
 from deerflow.persistence.workspace import WorkspaceRepository
 from deerflow.persistence.workspace.sql import SLUG_BLACKLIST
@@ -49,6 +54,16 @@ LEGACY_WORKSPACE_NAME = "Legacy Workspace"
 
 # The four business tables that gained ``workspace_id`` in alembic 0002.
 _BUSINESS_TABLES: tuple[str, ...] = ("threads_meta", "runs", "feedback", "run_events")
+
+# Map table-name to ORM class so we can build a portable correlated UPDATE
+# using SQLAlchemy expression language (SQLite < 3.33 lacks UPDATE-FROM
+# but supports correlated subqueries on every version we ship).
+_TABLE_MODELS: dict[str, type[Base]] = {
+    "threads_meta": ThreadMetaRow,
+    "runs": RunRow,
+    "feedback": FeedbackRow,
+    "run_events": RunEventRow,
+}
 
 
 async def _step1_create_workspaces_for_users(
@@ -111,12 +126,36 @@ async def _step2_update_table_from_users(
 ) -> int:
     """UPDATE *table* setting workspace_id from owner's users.default_workspace_id.
 
-    Filled in by T5.6.
+    Uses a correlated subquery (portable across SQLite + Postgres). Filters
+    ``workspace_id IS NULL AND user_id IS NOT NULL`` so already-set rows
+    and truly orphan rows are skipped (Step 3 handles the latter).
+
+    Returns the number of rows updated (or that *would* be updated under
+    ``dry_run``).
     """
-    _ = session_factory
-    _ = table
-    _ = dry_run
-    return 0
+    model = _TABLE_MODELS[table]
+    workspace_col = model.workspace_id
+    user_col = model.user_id
+
+    # Subquery: pull the user's default_workspace_id for each row.
+    correlated_default = select(UserRow.default_workspace_id).where(UserRow.id == user_col).scalar_subquery()
+
+    if dry_run:
+        # Count rows whose owner has a default_workspace_id assigned — only
+        # those would get touched by the actual UPDATE.
+        count_stmt = select(func.count()).select_from(model).join(UserRow, UserRow.id == user_col).where(workspace_col.is_(None), user_col.is_not(None), UserRow.default_workspace_id.is_not(None))
+        async with session_factory() as session:
+            count = (await session.execute(count_stmt)).scalar_one() or 0
+        logger.info("WOULD update %d rows in %s from users.default_workspace_id", count, table)
+        return int(count)
+
+    stmt = update(model).where(workspace_col.is_(None), user_col.is_not(None)).values(workspace_id=correlated_default)
+    async with session_factory() as session:
+        result = await session.execute(stmt)
+        await session.commit()
+        rowcount = result.rowcount or 0
+    logger.info("Updated %d rows in %s from users.default_workspace_id", rowcount, table)
+    return int(rowcount)
 
 
 async def _step3_assign_legacy_workspace(
