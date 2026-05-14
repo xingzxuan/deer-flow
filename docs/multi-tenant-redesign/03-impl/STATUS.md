@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-14，PR7 merge 进 docs branch 后
+> 上次更新：2026-05-14，PR8 merge 进 docs branch 后（Stage 0 工程全合）
 
 ## 一句话状态
 
-PR1 + PR2 + PR3 + PR4 + PR5 + PR6 + **PR7** 已 merge。**PR7 (2026-05-14)** 落地：第二条 boundary 围栏——`tests/test_workspace_boundary.py` AST 静态扫描 backend 全树，命中 `langgraph.checkpoint.*` / `langgraph_checkpoint_postgres` / `langgraph_checkpoint_sqlite` 且不在 `tests/boundary_allowlist.toml`（4 个合法 importer：`threads.py` + `async_provider.py` + `provider.py` + `runs/worker.py`）即 fail；TYPE_CHECKING-only import 自动豁免（parent-walk 检测 `if TYPE_CHECKING:` 嵌套）；9 个 self-test 防止扫描器静默空跑；T7.4 反注入实验把违规一行加进 `feedback.py:13` → scanner 精准红灯 → revert 后即绿。**3241 passed + 31 skipped + 18 caplog flake**（PR6 末 3214 + 30 + 17；+27 passed / +1 skip / +1 flake，PR7 新增 10 个 test，flake delta 与 PR7 改动无关）。Stage 0 仅剩 **PR8（service_accounts / api_keys / external_users schema）**。
+**PR1-PR8 全部已 merge——Stage 0 工程层面收尾。** **PR8 (2026-05-14)** 落地：3 张新表 schema-only 为 Stage 1 headless API 准备底座——`service_accounts`（workspace-scoped 非人身份，`identity_mode` 三态：`collapsed` / `external_passthrough` / `both`，`created_by` FK RESTRICT）/ `api_keys`（service_account 凭证，`key_prefix` 全局 UNIQUE + 双驱动部分索引 `idx_api_keys_active` WHERE `revoked_at IS NULL`，`scopes` 用 String(1024) 不用 PG `text[]` 保 SQLite 兼容）/ `external_users`（passthrough 终端身份，复合 UNIQUE `(service_account_id, external_id)`，`workspace_id` 冗余存储加速聚合）。FK 行为：workspace/SA delete CASCADE、creator user delete RESTRICT。9 新单测（3 service_account + 3 api_key + 2 external_user + 1 反向 metadata registration）。**3250 passed + 31 skipped + 18 caplog flake**（PR7 末 3241 + 31 + 18；+9 passed，flake 数 0 增）。Stage 0 工程层面**仅剩用户跟进的 live smoke**（见下）；业务层面看 "Stage 0 退出 Go/No-Go"。
 
 ## 8 PR 状态表
 
@@ -20,9 +20,12 @@ PR1 + PR2 + PR3 + PR4 + PR5 + PR6 + **PR7** 已 merge。**PR7 (2026-05-14)** 落
 | **PR5** | ✅ merged | 11 (T5.1-T5.10 + T5.12) | merged into docs branch (`a7326978..30f2bd00`) | [pr5-business-workspace-id.md](./pr5-business-workspace-id.md) |
 | **PR6** | ✅ merged | 13 (T5.11 + T6.1-T6.15) | merged into docs branch (`361e653d..87ea715c`) | [pr6-routes-paths-workspace.md](./pr6-routes-paths-workspace.md) |
 | **PR7** | ✅ merged | 4 (T7.1-T7.3 + T7.5; T7.4 是反注入验证无代码改动) | merged into docs branch (`1a6ccc9a..d8b13afc`) | [pr7-ci-boundary-scan.md](./pr7-ci-boundary-scan.md) |
-| **PR8** | 🟡 pending | 0 | — | — |
+| **PR8** | ✅ merged | 5 (T8.1 + T8.2/T8.3 合并 + T8.4 + T8.5 + T8.6) | merged into docs branch (`1fb07e48..f803f393`) | [pr8-headless-api-schema.md](./pr8-headless-api-schema.md) |
 
-**测试基线**：**PR7 末 3241 passed + 31 skipped**（PR6 末 3214 + 30；+27 passed / +1 skip，PR7 新增 10 个 boundary 测试 + 17 个之前 flake 这次稳过的环境差）。PR5 末 3150 + 30；PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**18 个 caplog 排序 flake 持续存在**（17 个 pre-existing + 1 PR6 引入 `test_path_migration_pending_warning::test_warns`，PR7 未引入新 flake）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
+**测试基线**：**PR8 末 3250 passed + 31 skipped**（PR7 末 3241 + 31；+9 passed，PR8 新增 3 + 3 + 2 + 1 = 9 个 schema 测试）。PR6 末 3214 + 30；PR5 末 3150 + 30；PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**18 个 caplog 排序 flake 持续存在**（17 个 pre-existing + 1 PR6 引入，PR7/PR8 均未引入新 flake）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
+
+### Stage 0 整体测试增长
+PR1 起到 PR8 末，从既有 ~3087 增到 3250 passed（+163 测试，覆盖：PG fixture / sqlite→pg 默认切换 / workspaces + memberships / auth + JWT + register + workspace 自建 / alembic + backfill / 业务表 workspace_id 哨兵 + cross-workspace 404 e2e + Paths workspace + 文件迁移 / langgraph.checkpoint boundary 围栏 / service_accounts + api_keys + external_users schema）。plan 测试规模预估栏目原本估 ~70 新增，实际 ~163——PR4/PR5/PR6 都比预估多 2-3x，主要是 cross-workspace 隔离的 boundary e2e 比 plan 估的更稠密。
 
 ## 用户必须跟进的事（live verification / 决策）
 
@@ -50,6 +53,7 @@ PR1 + PR2 + PR3 + PR4 + PR5 + PR6 + **PR7** 已 merge。**PR7 (2026-05-14)** 落
 | ~~PR5 T5.11~~ | ~~ORM model.py `nullable=False` 翻转~~ | **PR6 已落** (commit `87ea715c`) | — |
 | PR5 T5.12 真机 PG smoke | `alembic 0002 → backfill → 0003` 端到端 | agent 不能起 RDS 操作 | 用户跟进；命令清单见 [pr5-business-workspace-id.md "Live smoke 命令"](./pr5-business-workspace-id.md#live-smoke-命令用户跟进) |
 | PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 用户跟进；命令清单见 [pr6-routes-paths-workspace.md "Live smoke 命令"](./pr6-routes-paths-workspace.md#live-smoke-命令用户跟进) |
+| PR8 RDS 三张表存在 | `psql "$DATABASE_URL" -c "\dt service_accounts api_keys external_users"` 看 3 行；`\d+ api_keys` 看 `idx_api_keys_active ... WHERE revoked_at IS NULL` | agent 没 RDS 凭证 | 用户跟进；命令清单见 [pr8-headless-api-schema.md "Live smoke 命令"](./pr8-headless-api-schema.md#live-smoke-命令用户跟进) |
 
 ## 即将遇到的开放问题（plan 末尾列的，下个 session 处理）
 
@@ -61,7 +65,26 @@ PR1 + PR2 + PR3 + PR4 + PR5 + PR6 + **PR7** 已 merge。**PR7 (2026-05-14)** 落
 
 ## 下一步建议
 
-**PR8（service_accounts / api_keys / external_users schema only）**——Stage 0 最后一项。仿 PR3 纯 schema 模式：3 张表 + ORM，**不接路径 / 不写仓储 / 不接 API key 认证**（全留 Stage 1）。依赖只到 PR3 的 workspaces 表，与 PR4-PR7 完全独立。
+**Stage 0 工程层面 8 个 PR 全部 merge，agent 这一侧的代码工作收尾。** 剩下都是**用户必须做的 live verification**：
+
+1. **PR8 RDS 表存在** — `psql "$DATABASE_URL" -c "\dt service_accounts api_keys external_users"`
+2. **PR6 真机文件迁移** — 起 dev 服务、跑 `make migrate-paths --dry-run`、确认 lifespan warning 消失
+3. **PR5 RDS alembic 0002→backfill→0003** — 端到端验证业务表 workspace_id 列
+4. **PR1 testcontainers PG smoke** — docker daemon 起来后跑 `pytest -m postgres -v`
+5. **远程 RDS 密码轮换**（之前在聊天里给过明文）
+6. **Push docs branch** 跑 GitHub CI（已 push，监 [backend-postgres-tests workflow](../../../.github/workflows/backend-postgres-tests.yml) 在 PG matrix 全绿）
+
+工程门 [Stage 0 退出 Go/No-Go](../../superpowers/plans/2026-05-10-stage-0-multi-tenant-foundation.md#stage-0-退出-gono-go来自-phased-rollout-by-scale) 已基本满足：8 PR 全合 / 新增 ~163 测试全过 / CI 绿（待 push 后确认）/ 7 项不可逆 LOCK 已 sign-off。**业务门**（"第一个付费意向客户"）等业务进展；生产稳定运行 ≥ 2 周也属业务时序。
+
+Stage 1 可启动的方向（plan 没排，但已具备底座）：
+- **headless API 鉴权层**接 PR8 三张表（API key middleware / token 生成与 sha256 / `@require_permission` scope 升级 / Pattern A vs B 路由分流）
+- **frontend workspace picker / switching UI**
+- **platform admin 管理 workspace 的 CLI / UI**（plan self-review 标记的 gap）
+- **17 个 pre-existing caplog flake 集中清理**（一直推迟）
+
+---
+
+PR8 经验回顾：纯 schema PR，**Inline + 严格 TDD（红→绿）** 跑得很顺。6 个 task 单链条但每个 task 互相独立——SA / api_key / external_user 三张表之间只通过 FK 关联，没有跨 task signature 协调。每个表都按"先建模型 → 写 insert smoke 红→绿 → 加 cascade 测试 → 加 constraint 测试"四步走，3 张表 25 分钟内全落。T8.6 反向 metadata registration 测试是踩过坑后的肌肉记忆——历史上多次"模型类写了但 persistence/models/__init__.py 漏 import → create_all 不建表 → 上线 SELECT 时炸"，T8.6 把这条 invariant 永久锁住。
 
 PR7 经验回顾：纯静态测试 PR，Inline 模式继续合适——5 个 task 单链条强耦合（先确定 allowlist 内容才能写扫描器，扫描器函数得是导出才能 self-test）。复用 PR4 同款"红→绿"严格 TDD：故意建空 allowlist 跑红、再填→绿；T7.4 反注入实验是对静态扫描器的"集成 smoke"，确认现实 backend 文件 + 真实 allowlist 过滤路径同时生效——这一步比 9 个 self-test 都更有说服力。
 
