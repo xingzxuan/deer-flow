@@ -13,6 +13,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 
 from deerflow.persistence.service_account import ServiceAccountRow
 from deerflow.persistence.user.model import UserRow
@@ -90,5 +92,85 @@ async def test_insert_smoke(tmp_path):
         assert row.identity_mode == "collapsed"
         assert row.status == "active"
         assert row.created_by == "u-alice"
+    finally:
+        await _cleanup()
+
+
+# ---------------------------------------------------------------------------
+# T8.2 — CASCADE on workspace delete
+# ---------------------------------------------------------------------------
+
+
+async def test_cascade_on_workspace_delete(tmp_path):
+    """Deleting the parent workspace removes the service_account row (FK CASCADE)."""
+    sf = await _setup(tmp_path)
+    try:
+        await _seed_user(sf)
+        await _seed_workspace(sf)
+        now = datetime.now(UTC)
+        async with sf() as session:
+            session.add(
+                ServiceAccountRow(
+                    id="sa-2",
+                    workspace_id="w-1",
+                    name="bot",
+                    role="member",
+                    identity_mode="collapsed",
+                    status="active",
+                    created_by="u-alice",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+
+        async with sf() as session:
+            await session.execute(delete(WorkspaceRow).where(WorkspaceRow.id == "w-1"))
+            await session.commit()
+
+        async with sf() as session:
+            row = await session.get(ServiceAccountRow, "sa-2")
+        assert row is None
+    finally:
+        await _cleanup()
+
+
+# ---------------------------------------------------------------------------
+# T8.3 — RESTRICT on created_by user delete
+# ---------------------------------------------------------------------------
+
+
+async def test_restrict_on_created_by_user_delete(tmp_path):
+    """Deleting the creator user is blocked while their service_account survives."""
+    sf = await _setup(tmp_path)
+    try:
+        await _seed_user(sf)
+        await _seed_workspace(sf)
+        now = datetime.now(UTC)
+        async with sf() as session:
+            session.add(
+                ServiceAccountRow(
+                    id="sa-3",
+                    workspace_id="w-1",
+                    name="bot",
+                    role="member",
+                    identity_mode="collapsed",
+                    status="active",
+                    created_by="u-alice",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+
+        with pytest.raises(IntegrityError):
+            async with sf() as session:
+                await session.execute(delete(UserRow).where(UserRow.id == "u-alice"))
+                await session.commit()
+
+        # The service_account is still there after the rollback.
+        async with sf() as session:
+            row = await session.get(ServiceAccountRow, "sa-3")
+        assert row is not None
     finally:
         await _cleanup()
