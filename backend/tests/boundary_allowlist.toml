@@ -1,0 +1,28 @@
+# PR7 — boundary scan allowlist for direct LangGraph checkpoint/saver imports.
+#
+# Paths are relative to backend/. A path here means: "this file is permitted to
+# import langgraph.checkpoint.* at runtime". Adding to this list requires a
+# matching justification in the PR that introduces the new importer.
+#
+# Consumed by tests/test_workspace_boundary.py.
+#
+# Imports inside `if TYPE_CHECKING:` blocks are exempt automatically — they do
+# not pull the symbol into runtime — so type-only references (e.g. annotations
+# on `BaseCheckpointSaver` parameters) do NOT need to be listed here.
+
+langgraph_checkpoint_importers = [
+    # Gateway thread plumbing: constructs an empty checkpoint when initialising
+    # a new thread's state via the LangGraph runtime.
+    "app/gateway/routers/threads.py",
+
+    # Harness checkpointer factories: the single authorised place to construct
+    # InMemorySaver / SqliteSaver / PostgresSaver implementations. Everywhere
+    # else must obtain a checkpointer via `app.gateway.deps.get_checkpointer`
+    # or `deerflow.runtime.checkpointer` helpers.
+    "packages/harness/deerflow/runtime/checkpointer/async_provider.py",
+    "packages/harness/deerflow/runtime/checkpointer/provider.py",
+
+    # Background run worker: uses `empty_checkpoint` to seed state for runs
+    # resumed from a missing/expired checkpoint id.
+    "packages/harness/deerflow/runtime/runs/worker.py",
+]
