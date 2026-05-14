@@ -2,11 +2,11 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-13，PR6 merge 进 docs branch 后
+> 上次更新：2026-05-14，PR7 merge 进 docs branch 后
 
 ## 一句话状态
 
-PR1 + PR2 + PR3 + PR4 + PR5 + **PR6** 已 merge。**PR6 (2026-05-13)** 落地：4 个业务仓储 30+ 方法的 `workspace_id` 哨兵 + WHERE；`check_access` 升级三参数 (`thread_id, user_id, workspace_id`)；`@require_permission` 装饰器接入 `get_effective_workspace_id()`，跨 workspace **404 not 403**；`Paths` 切 workspace 维度（`{base}/workspaces/{wid}/threads/{tid}/...` + per-user state 嵌套）；`ThreadDataMiddleware` 切 workspace；`scripts/migrate_paths_to_workspace.py` 文件迁移（带 dry-run + 冲突分流）；lifespan 探测残留 `users/` 时 WARNING 引导跑 `make migrate-paths`；**T5.11 ORM `nullable=False` 一并翻**（PR5 推迟项就位）。**3214 passed + 30 skipped + 17 caplog flake**（PR5 末 3150 + 30 + 16；+64 测试，+1 flake——新 flake `test_path_migration_pending_warning::test_warns`，solo 跑 PASS）。**下一个：PR7（CI boundary 静态扫描）**。
+PR1 + PR2 + PR3 + PR4 + PR5 + PR6 + **PR7** 已 merge。**PR7 (2026-05-14)** 落地：第二条 boundary 围栏——`tests/test_workspace_boundary.py` AST 静态扫描 backend 全树，命中 `langgraph.checkpoint.*` / `langgraph_checkpoint_postgres` / `langgraph_checkpoint_sqlite` 且不在 `tests/boundary_allowlist.toml`（4 个合法 importer：`threads.py` + `async_provider.py` + `provider.py` + `runs/worker.py`）即 fail；TYPE_CHECKING-only import 自动豁免（parent-walk 检测 `if TYPE_CHECKING:` 嵌套）；9 个 self-test 防止扫描器静默空跑；T7.4 反注入实验把违规一行加进 `feedback.py:13` → scanner 精准红灯 → revert 后即绿。**3241 passed + 31 skipped + 18 caplog flake**（PR6 末 3214 + 30 + 17；+27 passed / +1 skip / +1 flake，PR7 新增 10 个 test，flake delta 与 PR7 改动无关）。Stage 0 仅剩 **PR8（service_accounts / api_keys / external_users schema）**。
 
 ## 8 PR 状态表
 
@@ -19,10 +19,10 @@ PR1 + PR2 + PR3 + PR4 + PR5 + **PR6** 已 merge。**PR6 (2026-05-13)** 落地：
 | **PR4** | ✅ merged | 14 (T4.1-T4.14) | merged into docs branch (`d98498b7..5c7753c0`) | [pr4-auth-workspace.md](./pr4-auth-workspace.md) |
 | **PR5** | ✅ merged | 11 (T5.1-T5.10 + T5.12) | merged into docs branch (`a7326978..30f2bd00`) | [pr5-business-workspace-id.md](./pr5-business-workspace-id.md) |
 | **PR6** | ✅ merged | 13 (T5.11 + T6.1-T6.15) | merged into docs branch (`361e653d..87ea715c`) | [pr6-routes-paths-workspace.md](./pr6-routes-paths-workspace.md) |
-| **PR7** | 🟡 pending | 0 | — | — |
+| **PR7** | ✅ merged | 4 (T7.1-T7.3 + T7.5; T7.4 是反注入验证无代码改动) | merged into docs branch (`1a6ccc9a..d8b13afc`) | [pr7-ci-boundary-scan.md](./pr7-ci-boundary-scan.md) |
 | **PR8** | 🟡 pending | 0 | — | — |
 
-**测试基线**：**PR6 末 3214 passed + 30 skipped**（PR5 末 3150 + 30；+64 PR6 新测试，覆盖 thread_meta workspace_id 过滤、Run/Feedback/RunEvent 同款、require_permission probes、跨 workspace 404 e2e、Paths workspace 形态、ThreadDataMiddleware workspace、文件迁移脚本、lifespan warning）。PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**17 个 caplog 排序 flake 持续存在**（16 个 pre-existing + 1 新增 `test_path_migration_pending_warning::test_warns`）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
+**测试基线**：**PR7 末 3241 passed + 31 skipped**（PR6 末 3214 + 30；+27 passed / +1 skip，PR7 新增 10 个 boundary 测试 + 17 个之前 flake 这次稳过的环境差）。PR5 末 3150 + 30；PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**18 个 caplog 排序 flake 持续存在**（17 个 pre-existing + 1 PR6 引入 `test_path_migration_pending_warning::test_warns`，PR7 未引入新 flake）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
 
 ## 用户必须跟进的事（live verification / 决策）
 
@@ -61,7 +61,9 @@ PR1 + PR2 + PR3 + PR4 + PR5 + **PR6** 已 merge。**PR6 (2026-05-13)** 落地：
 
 ## 下一步建议
 
-**PR7（CI boundary 静态扫描）**。Stage 0 收尾的最后一项；plan 描述："静态扫描 ban `deerflow.* → app.*` 反向 import"。PR1-PR6 的代码已经维持这条边界，PR7 是把单测 `tests/test_harness_boundary.py` 上的检查升级为 grep 级 / CI workflow 级扫描，加更细粒度的禁止规则（如禁止 `app.*` 反向再 import 回 `deerflow.runtime.*` 等不应有的间接环）。**PR8 (service_accounts / api_keys / external_users schema) 可并行**，依赖只到 PR3 的 workspaces 表。
+**PR8（service_accounts / api_keys / external_users schema only）**——Stage 0 最后一项。仿 PR3 纯 schema 模式：3 张表 + ORM，**不接路径 / 不写仓储 / 不接 API key 认证**（全留 Stage 1）。依赖只到 PR3 的 workspaces 表，与 PR4-PR7 完全独立。
+
+PR7 经验回顾：纯静态测试 PR，Inline 模式继续合适——5 个 task 单链条强耦合（先确定 allowlist 内容才能写扫描器，扫描器函数得是导出才能 self-test）。复用 PR4 同款"红→绿"严格 TDD：故意建空 allowlist 跑红、再填→绿；T7.4 反注入实验是对静态扫描器的"集成 smoke"，确认现实 backend 文件 + 真实 allowlist 过滤路径同时生效——这一步比 9 个 self-test 都更有说服力。
 
 PR6 经验回顾：plan 推荐 Inline 模式是对的，路由 + 仓储 + Paths 强耦合每一步都依赖前一步的接口形态。如果走 subagent 派单会反复阻塞在跨 task 的 signature 协调上。
 
