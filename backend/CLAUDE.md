@@ -102,6 +102,8 @@ Regression tests related to Docker/provisioner behavior:
 
 Boundary check (harness → app import firewall):
 - `tests/test_harness_boundary.py` — ensures `packages/harness/deerflow/` never imports from `app.*`
+- `tests/test_workspace_boundary.py` — AST static scan that forbids direct imports of `langgraph.checkpoint.*` (and the third-party `langgraph_checkpoint_postgres` / `langgraph_checkpoint_sqlite` packages) outside the allowlist in `tests/boundary_allowlist.toml`. Everywhere else must obtain a checkpointer via `app.gateway.deps.get_checkpointer` or the harness `deerflow.runtime.checkpointer` factory. Imports inside `if TYPE_CHECKING:` blocks are exempt automatically (they do not enter runtime). When a legitimate new importer is genuinely needed, append its path to `boundary_allowlist.toml` in the same PR
+- `tests/test_workspace_boundary_self.py` — self-tests for the scanner above (9 cases over synthetic `.py` files) guarding against silent-empty regressions
 
 CI runs these regression tests for every pull request via [.github/workflows/backend-unit-tests.yml](../.github/workflows/backend-unit-tests.yml).
 
