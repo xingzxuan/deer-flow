@@ -1,0 +1,9 @@
+# 本地依赖 / 虚拟环境
+.venv/
+__pycache__/
+*.pyc
+
+# 鉴权 cookie / 本地产物
+jar.txt
+*.local
+.env
