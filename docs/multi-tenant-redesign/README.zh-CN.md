@@ -26,7 +26,8 @@ docs/multi-tenant-redesign/
 │   ├── adr-spike-langgraph-postgres       spike：LangGraph PG 注入能力
 │   ├── adr-vs-code-audit                  审计：ADR vs 现状代码
 │   ├── multi-tenant-phase-0-plan          Phase-0 时间盒 / 产出物
-│   └── workspace-schema-design            **Stage 0 schema 锁定版**（不可逆决策点）
+│   ├── workspace-schema-design            **Stage 0 schema 锁定版**（不可逆决策点）
+│   └── database-schema-as-built           **数据库设计落地版**（对照实现代码的事实参考）
 └── 02-rollout/                            落地路线 + 集成轨道
     ├── phased-rollout-by-scale            **Stage 0–4 主线** 路线图
     ├── stage-0-code-map                   Stage 0 现状代码地图（行号锚点）
@@ -49,6 +50,7 @@ docs/multi-tenant-redesign/
 | spike | [LangGraph PG 注入](./01-redesign/adr-spike-langgraph-postgres.zh-CN.md) | 已结论 | 2026-05-09 | `langgraph-checkpoint-postgres==3.0.5` **不存在 connection_factory**；改走应用层强校验 + 自有表 RLS 的两层模型 |
 | 审计 | [ADR vs 代码](./01-redesign/adr-vs-code-audit.zh-CN.md) | 已结论 | 2026-05-09 | 代码库 0 处 `tenant`；Better Auth 不存在；ObjectStorage / KMS / Postgres 测试夹具全缺；底座先行 §3.5 |
 | 锁定 | [workspace-schema-design](./01-redesign/workspace-schema-design.zh-CN.md) | **Stage 0 锁定版** | 2026-05-10 | `workspace_id` 命名 + 7 项不可逆决策；Stage 0 PR1 动手前必读 |
+| 参考 | [database-schema-as-built](./01-redesign/database-schema-as-built.zh-CN.md) | **落地版（as-built）** | 2026-06-27 | 对照实现代码的 10 张表全字段 / 外键 / 索引 / 迁移参考；与锁定版冲突以本文为准 |
 | 计划 | [phase-0-plan](./01-redesign/multi-tenant-phase-0-plan.zh-CN.md) | 计划 | 2026-05-09 | Phase-0 时间盒 3 周；含底座先行（§3.5） |
 | 路线 | [phased-rollout-by-scale](./02-rollout/phased-rollout-by-scale.zh-CN.md) | **当前主线路线图** | 2026-05-09 | Stage 0–4 + 触发/退出/时间盒/Go-No-Go |
 | 锚点 | [stage-0-code-map](./02-rollout/stage-0-code-map.zh-CN.md) | Stage 0 用 | 2026-05-09 | 当前代码文件:行号锚点 + Stage 0 改动落点 |
