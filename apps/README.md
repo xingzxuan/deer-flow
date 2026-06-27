@@ -23,6 +23,20 @@ apps/                                ← 你的应用（消费 deerflow，不反
 
 > 还有第三种：LangGraph SDK（`langgraph_sdk.get_client(url=".../api")`，graph id `lead_agent`），用于接入 LangGraph 生态工具链。需要的话照 HTTP 示例的鉴权流程拿 cookie 即可。
 
+### 运行示例（每个示例自带 run.sh）
+
+```bash
+# ① HTTP 模式：需要先起 Gateway（dev-gateway 或 dev-full 都行）
+#    run.sh 会自动探测网关地址：优先 :2026，回退 :8001
+./apps/examples/http-chat/run.sh
+DF_BASE=http://localhost:8001 ./apps/examples/http-chat/run.sh   # 也可手动指定
+
+# ② 内嵌模式：不需要起任何服务，run.sh 自动进 backend uv 环境运行
+./apps/examples/embedded-chat/run.sh
+```
+
+http-chat 的 `run.sh` 优先用 `uv run --no-project --with requests`（临时环境，不污染系统），没有 uv 才回退到本地 `.venv` + pip；可用 `DF_BASE` / `DF_EMAIL` / `DF_PASSWORD` 覆盖。embedded-chat 的 `run.sh` 自动定位 `backend/`、加载 `.env` 后用 `uv run` 启动，依赖 `config.yaml` 里有可用模型。
+
 ## 前置：先把 DeerFlow 跑起来
 
 在**仓库根目录**：
@@ -32,6 +46,29 @@ make dev          # 起 Gateway(8001) + 前端(3000) + nginx(2026)，统一入�
 ```
 
 确保 `config.yaml` 里至少配了一个可用模型 + API key。
+
+### 本地调试脚本（推荐）
+
+`make dev` 是前台阻塞运行。日常调试更顺手的是仓库根 `scripts/` 下两个生命周期脚本，子命令统一为 `start / stop / restart / status / logs / run`：
+
+| 脚本 | 起什么 | 入口 | 适合 |
+|---|---|---|---|
+| `scripts/dev-gateway.sh` | 只起 Gateway | `http://localhost:8001` | 调后端 API / 接入示例，起得快 |
+| `scripts/dev-full.sh` | Gateway + 前端 + nginx | `http://localhost:2026` | 连前端一起调，完整体验 |
+
+```bash
+./scripts/dev-gateway.sh start          # 后台启动，等就绪后返回
+./scripts/dev-gateway.sh status         # PID / 端口 / HTTP 健康检查
+./scripts/dev-gateway.sh logs           # tail -f 跟随日志（不影响服务）
+./scripts/dev-gateway.sh stop
+
+./scripts/dev-full.sh start             # 全量栈后台启动（首次装依赖）
+SKIP_INSTALL=1 ./scripts/dev-full.sh start   # 跳过依赖安装，重启更快
+./scripts/dev-full.sh status            # 三服务一览
+./scripts/dev-full.sh run               # 前台运行（= make dev，gateway 带热重载）
+```
+
+环境变量：`PORT=`(换端口)、`NO_RELOAD=1`(关热重载，断点更稳)、`SKIP_INSTALL=1`(全量栈跳过装依赖)。
 
 ## 鉴权（HTTP 模式必读）
 
