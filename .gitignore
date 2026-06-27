@@ -31,6 +31,7 @@ extensions_config.json
 # IDE
 .idea/
 .vscode/
+.qoder/
 
 # Coverage report
 coverage.xml
@@ -63,3 +64,4 @@ config.yaml.bak
 skills/gstack
 skills/superpowers
 CLAUDE.md
+AGENTS.md

@@ -277,19 +277,35 @@ phase_e2e() {
 
     local tag
     tag=$(date +%s)
-    local alice="alice-${tag}@verify.local"
-    local bob="bob-${tag}@verify.local"
-    local pw="VerifyStage0_${tag}"
+    local alice="alice-${tag}@verify-stage0.com"
+    local bob="bob-${tag}@verify-stage0.com"
+    local pw="VerifyStage0_${tag}!"
     local jar_a=/tmp/verify_alice_${tag}.cookies
     local jar_b=/tmp/verify_bob_${tag}.cookies
     rm -f "$jar_a" "$jar_b"
+
+    # Ensure system is initialized (admin account exists) before registering users.
+    info "ensuring admin account exists (POST /api/v1/auth/initialize)"
+    local init_code
+    init_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        -d "{\"email\":\"admin-${tag}@verify-stage0.com\",\"password\":\"$pw\"}" \
+        "$GATEWAY_URL/api/v1/auth/initialize")
+    if [ "$init_code" = "201" ]; then
+        ok "admin initialized (first boot)"
+    elif [ "$init_code" = "409" ]; then
+        ok "admin already exists (system previously initialized)"
+    else
+        fail "admin initialization returned $init_code"
+        return
+    fi
 
     register_user() {
         local jar="$1"; local email="$2"
         curl -sS -c "$jar" -o /tmp/verify_register_$$.json -w '%{http_code}' \
             -H 'Content-Type: application/json' \
             -d "{\"email\":\"$email\",\"password\":\"$pw\"}" \
-            "$GATEWAY_URL/api/auth/register"
+            "$GATEWAY_URL/api/v1/auth/register"
     }
 
     info "registering Alice + Bob"
