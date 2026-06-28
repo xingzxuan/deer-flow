@@ -14,5 +14,6 @@ middleware live in Stage 1 alongside the headless API surface.
 from __future__ import annotations
 
 from deerflow.persistence.api_key.model import ApiKeyRow
+from deerflow.persistence.api_key.sql import ApiKeyRepository
 
-__all__ = ["ApiKeyRow"]
+__all__ = ["ApiKeyRepository", "ApiKeyRow"]
