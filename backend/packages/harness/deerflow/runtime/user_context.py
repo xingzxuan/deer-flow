@@ -42,11 +42,17 @@ from typing import Final, Protocol, runtime_checkable
 class CurrentUser(Protocol):
     """Structural type for the current authenticated user.
 
-    Any object with an ``.id: str`` attribute satisfies this protocol.
-    Concrete implementations live in ``app.gateway.auth.models.User``.
+    Requires ``.id: str`` plus ``.is_service_account: bool`` — the latter
+    distinguishes a human (cookie/JWT) principal from a headless service
+    account (API key). Concrete implementations:
+    ``app.gateway.auth.models.User`` (False) and
+    ``app.gateway.auth.api_key_backend.ServicePrincipal`` (True).
+    Readers that may run before either is set should use
+    ``getattr(user, "is_service_account", False)``.
     """
 
     id: str
+    is_service_account: bool
 
 
 _current_user: Final[ContextVar[CurrentUser | None]] = ContextVar("deerflow_current_user", default=None)

@@ -31,6 +31,11 @@ class User(BaseModel):
     needs_setup: bool = Field(default=False, description="True for auto-created admin until setup completes")
     token_version: int = Field(default=0, description="Incremented on password change to invalidate old JWTs")
 
+    # Headless API discriminator (Stage 1 PR2). Always False for human
+    # users; ServicePrincipal sets it True. Lets downstream code branch
+    # on principal kind without isinstance gymnastics.
+    is_service_account: bool = Field(default=False, description="True only for API-key service accounts, never for human users")
+
     # Workspace linkage (Stage 0 PR4)
     default_workspace_id: str | None = Field(
         default=None,
