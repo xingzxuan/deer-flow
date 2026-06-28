@@ -29,13 +29,26 @@ def generate_csrf_token() -> str:
     return secrets.token_urlsafe(CSRF_TOKEN_LENGTH)
 
 
+def has_bearer_header(request: Request) -> bool:
+    """True if the request carries an ``Authorization: Bearer ...`` header.
+
+    Bearer requests authenticate via header, not cookie, so they are not
+    vulnerable to CSRF (the browser never auto-attaches a bearer header).
+    """
+    return request.headers.get("authorization", "").startswith("Bearer ")
+
+
 def should_check_csrf(request: Request) -> bool:
     """Determine if a request needs CSRF validation.
 
     CSRF is checked for state-changing methods (POST, PUT, DELETE, PATCH).
-    GET, HEAD, OPTIONS, and TRACE are exempt per RFC 7231.
+    GET, HEAD, OPTIONS, and TRACE are exempt per RFC 7231. Bearer-header
+    (API key / token) requests are exempt — they don't ride on cookies.
     """
     if request.method not in ("POST", "PUT", "DELETE", "PATCH"):
+        return False
+
+    if has_bearer_header(request):
         return False
 
     path = request.url.path.rstrip("/")
