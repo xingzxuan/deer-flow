@@ -12,7 +12,7 @@ from deerflow.models import create_chat_model
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["suggestions"])
+router = APIRouter(tags=["suggestions"])
 
 
 class SuggestionMessage(BaseModel):

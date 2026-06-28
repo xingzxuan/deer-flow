@@ -17,7 +17,7 @@ from app.gateway.routers import runs
 def _make_app(run_store=None, event_store=None, feedback_repo=None):
     """Build a test FastAPI app with stub auth and mocked state."""
     app = make_authed_test_app()
-    app.include_router(runs.router)
+    app.include_router(runs.router, prefix="/api")
 
     if run_store is not None:
         app.state.run_store = run_store

@@ -598,7 +598,7 @@ def test_upload_limits_endpoint_requires_thread_access():
     cfg.uploads = {}
     app = make_authed_test_app(owner_check_passes=False)
     app.state.config = cfg
-    app.include_router(uploads.router)
+    app.include_router(uploads.router, prefix="/api")
 
     with TestClient(app) as client:
         response = client.get("/api/threads/thread-local/uploads/limits")

@@ -39,7 +39,7 @@ def _make_skill(name: str, *, enabled: bool) -> Skill:
 def _make_test_app(config) -> FastAPI:
     app = FastAPI()
     app.state.config = config
-    app.include_router(skills_router.router)
+    app.include_router(skills_router.router, prefix="/api")
     return app
 
 

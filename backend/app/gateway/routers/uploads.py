@@ -30,7 +30,7 @@ from deerflow.utils.file_conversion import CONVERTIBLE_EXTENSIONS, convert_file_
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/threads/{thread_id}/uploads", tags=["uploads"])
+router = APIRouter(prefix="/threads/{thread_id}/uploads", tags=["uploads"])
 
 UPLOAD_CHUNK_SIZE = 8192
 DEFAULT_MAX_FILES = 10

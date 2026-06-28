@@ -59,7 +59,7 @@ def _build_thread_app() -> tuple[FastAPI, InMemoryStore, InMemorySaver]:
     app.state.store = store
     app.state.checkpointer = checkpointer
     app.state.thread_store = _PermissiveThreadMetaStore(store)
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
     return app, store, checkpointer
 
 
@@ -113,7 +113,7 @@ def test_delete_thread_route_cleans_thread_directory(tmp_path):
     (paths.sandbox_work_dir("thread-route", user_id=user_id) / "notes.txt").write_text("hello", encoding="utf-8")
 
     app = make_authed_test_app()
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
 
     with patch("app.gateway.routers.threads.get_paths", return_value=paths):
         with TestClient(app) as client:
@@ -128,7 +128,7 @@ def test_delete_thread_route_rejects_invalid_thread_id(tmp_path):
     paths = Paths(tmp_path)
 
     app = make_authed_test_app()
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
 
     with patch("app.gateway.routers.threads.get_paths", return_value=paths):
         with TestClient(app) as client:
@@ -141,7 +141,7 @@ def test_delete_thread_route_returns_422_for_route_safe_invalid_id(tmp_path):
     paths = Paths(tmp_path)
 
     app = make_authed_test_app()
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
 
     with patch("app.gateway.routers.threads.get_paths", return_value=paths):
         with TestClient(app) as client:

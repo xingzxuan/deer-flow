@@ -12,7 +12,7 @@ from app.gateway.path_utils import resolve_thread_virtual_path
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["artifacts"])
+router = APIRouter(tags=["artifacts"])
 
 ACTIVE_CONTENT_MIME_TYPES = {
     "text/html",

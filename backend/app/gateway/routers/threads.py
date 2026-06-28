@@ -29,7 +29,7 @@ from deerflow.runtime.user_context import get_effective_user_id
 from deerflow.utils.time import coerce_iso, now_iso
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/threads", tags=["threads"])
+router = APIRouter(prefix="/threads", tags=["threads"])
 
 
 # Metadata keys that the server controls; clients are not allowed to set

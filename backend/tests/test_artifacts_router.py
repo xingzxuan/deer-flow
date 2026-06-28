@@ -76,7 +76,7 @@ def test_get_artifact_download_false_does_not_force_attachment(tmp_path, monkeyp
     monkeypatch.setattr(artifacts_router, "resolve_thread_virtual_path", lambda _thread_id, _path: artifact_path)
 
     app = make_authed_test_app()
-    app.include_router(artifacts_router.router)
+    app.include_router(artifacts_router.router, prefix="/api")
 
     with TestClient(app) as client:
         response = client.get("/api/threads/thread-1/artifacts/mnt/user-data/outputs/note.txt?download=false")
@@ -94,7 +94,7 @@ def test_get_artifact_download_true_forces_attachment_for_skill_archive(tmp_path
     monkeypatch.setattr(artifacts_router, "resolve_thread_virtual_path", lambda _thread_id, _path: skill_path)
 
     app = make_authed_test_app()
-    app.include_router(artifacts_router.router)
+    app.include_router(artifacts_router.router, prefix="/api")
 
     with TestClient(app) as client:
         response = client.get("/api/threads/thread-1/artifacts/mnt/user-data/outputs/sample.skill/notes.txt?download=true")

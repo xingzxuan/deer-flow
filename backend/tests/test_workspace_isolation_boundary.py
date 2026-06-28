@@ -80,7 +80,7 @@ def _build_app(*, user_id: str, workspace_id: str):
     app.state.store = store
     app.state.checkpointer = InMemorySaver()
     app.state.thread_store = MemoryThreadMetaStore(store)
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
     return app, store
 
 

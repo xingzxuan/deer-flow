@@ -382,7 +382,7 @@ def _make_test_app(tmp_path: Path):
     from app.gateway.routers.agents import router
 
     app = FastAPI()
-    app.include_router(router)
+    app.include_router(router, prefix="/api")
     return app
 
 

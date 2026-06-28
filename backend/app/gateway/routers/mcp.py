@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from deerflow.config.extensions_config import ExtensionsConfig, get_extensions_config, reload_extensions_config
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["mcp"])
+router = APIRouter(tags=["mcp"])
 
 
 class McpOAuthConfigResponse(BaseModel):

@@ -381,56 +381,72 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
             )
 
     # Include routers
-    # Models API is mounted at /api/models
-    app.include_router(models.router)
+    # Legacy routers are dual-mounted on /api (backward compat) and /api/v1 (versioned).
+    # The deprecation middleware (Task 5.1) stamps X-API-Deprecated on /api responses.
 
-    # MCP API is mounted at /api/mcp
-    app.include_router(mcp.router)
+    # Models API — /api/models and /api/v1/models
+    app.include_router(models.router, prefix="/api")
+    app.include_router(models.router, prefix="/api/v1")
 
-    # Memory API is mounted at /api/memory
-    app.include_router(memory.router)
+    # MCP API — /api/mcp and /api/v1/mcp
+    app.include_router(mcp.router, prefix="/api")
+    app.include_router(mcp.router, prefix="/api/v1")
 
-    # Skills API is mounted at /api/skills
-    app.include_router(skills.router)
+    # Memory API — /api/memory and /api/v1/memory
+    app.include_router(memory.router, prefix="/api")
+    app.include_router(memory.router, prefix="/api/v1")
 
-    # Artifacts API is mounted at /api/threads/{thread_id}/artifacts
-    app.include_router(artifacts.router)
+    # Skills API — /api/skills and /api/v1/skills
+    app.include_router(skills.router, prefix="/api")
+    app.include_router(skills.router, prefix="/api/v1")
 
-    # Uploads API is mounted at /api/threads/{thread_id}/uploads
-    app.include_router(uploads.router)
+    # Artifacts API — /api/threads/{thread_id}/artifacts and /api/v1/threads/{thread_id}/artifacts
+    app.include_router(artifacts.router, prefix="/api")
+    app.include_router(artifacts.router, prefix="/api/v1")
 
-    # Thread cleanup API is mounted at /api/threads/{thread_id}
-    app.include_router(threads.router)
+    # Uploads API — /api/threads/{thread_id}/uploads and /api/v1/threads/{thread_id}/uploads
+    app.include_router(uploads.router, prefix="/api")
+    app.include_router(uploads.router, prefix="/api/v1")
 
-    # Agents API is mounted at /api/agents
-    app.include_router(agents.router)
+    # Threads API — /api/threads/{thread_id} and /api/v1/threads/{thread_id}
+    app.include_router(threads.router, prefix="/api")
+    app.include_router(threads.router, prefix="/api/v1")
 
-    # Suggestions API is mounted at /api/threads/{thread_id}/suggestions
-    app.include_router(suggestions.router)
+    # Agents API — /api/agents and /api/v1/agents
+    app.include_router(agents.router, prefix="/api")
+    app.include_router(agents.router, prefix="/api/v1")
 
-    # Channels API is mounted at /api/channels
-    app.include_router(channels.router)
+    # Suggestions API — /api/threads/{thread_id}/suggestions and /api/v1/threads/{thread_id}/suggestions
+    app.include_router(suggestions.router, prefix="/api")
+    app.include_router(suggestions.router, prefix="/api/v1")
 
-    # Assistants compatibility API (LangGraph Platform stub)
+    # Channels API — /api/channels and /api/v1/channels
+    app.include_router(channels.router, prefix="/api")
+    app.include_router(channels.router, prefix="/api/v1")
+
+    # Assistants compatibility API (LangGraph Platform stub) — intentionally NOT dual-mounted
     app.include_router(assistants_compat.router)
 
-    # Auth API is mounted at /api/v1/auth
+    # Auth API — /api/v1/auth only (already versioned; must NOT get an /api/auth twin)
     app.include_router(auth.router)
 
-    # Service Accounts API is mounted at /api/v1/service-accounts
+    # Service Accounts API — /api/v1/service-accounts only (already versioned)
     app.include_router(service_accounts.router)
 
-    # API Keys API is mounted at /api/v1/api-keys
+    # API Keys API — /api/v1/api-keys only (already versioned)
     app.include_router(api_keys.router)
 
-    # Feedback API is mounted at /api/threads/{thread_id}/runs/{run_id}/feedback
-    app.include_router(feedback.router)
+    # Feedback API — /api/threads/{thread_id}/runs/{run_id}/feedback and /api/v1/... twin
+    app.include_router(feedback.router, prefix="/api")
+    app.include_router(feedback.router, prefix="/api/v1")
 
-    # Thread Runs API (LangGraph Platform-compatible runs lifecycle)
-    app.include_router(thread_runs.router)
+    # Thread Runs API — /api/threads/{thread_id}/runs and /api/v1/... twin
+    app.include_router(thread_runs.router, prefix="/api")
+    app.include_router(thread_runs.router, prefix="/api/v1")
 
-    # Stateless Runs API (stream/wait without a pre-existing thread)
-    app.include_router(runs.router)
+    # Stateless Runs API — /api/runs and /api/v1/runs
+    app.include_router(runs.router, prefix="/api")
+    app.include_router(runs.router, prefix="/api/v1")
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

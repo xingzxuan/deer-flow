@@ -14,7 +14,7 @@ from deerflow.config.paths import get_paths
 from deerflow.runtime.user_context import get_effective_user_id
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["agents"])
+router = APIRouter(tags=["agents"])
 
 AGENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9-]+$")
 

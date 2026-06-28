@@ -15,7 +15,7 @@ from deerflow.agents.memory.updater import (
 from deerflow.config.memory_config import get_memory_config
 from deerflow.runtime.user_context import get_effective_user_id
 
-router = APIRouter(prefix="/api", tags=["memory"])
+router = APIRouter(tags=["memory"])
 
 
 class ContextSection(BaseModel):

@@ -37,7 +37,7 @@ def _build_app(workspace_id: str):
     app.state.store = store
     app.state.checkpointer = checkpointer
     app.state.thread_store = MemoryThreadMetaStore(store)
-    app.include_router(threads.router)
+    app.include_router(threads.router, prefix="/api")
     return app, store
 
 

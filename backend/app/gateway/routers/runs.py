@@ -21,7 +21,7 @@ from app.gateway.services import sse_consumer, start_run
 from deerflow.runtime import serialize_channel_values
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/runs", tags=["runs"])
+router = APIRouter(prefix="/runs", tags=["runs"])
 
 
 def _resolve_thread_id(body: RunCreateRequest) -> str:
