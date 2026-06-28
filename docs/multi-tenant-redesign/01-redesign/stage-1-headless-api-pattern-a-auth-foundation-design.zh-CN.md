@@ -171,6 +171,7 @@
 - **scope 仅在 threads/runs 等 `@require_permission` 装饰的路由上生效。** `AuthContext.permissions`（由 key 的 scopes 填充）只被 `@require_permission` 读取，而该装饰器目前只挂在 threads/runs/uploads/artifacts/feedback/suggestions 上。`mcp`（`PUT /api/v1/mcp/config`）、`skills`（`POST /api/v1/skills/install`）、`channels`（`restart`）、`models`、`agents`、`memory` 等路由**只校验"已认证"，不校验 scope/role**。后果：一把 `scopes="threads:read"` 的 key 仍能改全局 MCP 配置、装技能、重启 channel；且这些目标是**进程级全局**（非 workspace 分区），对它们而言 workspace 隔离也不成立。
   - 这与现有真人模型一致（真人拿 `_ALL_PERMISSIONS`，这些路由本就无授权），且 D4 / 非目标已把 `scopes=[...]` 显式参数化升级推后——故属**设计内的已知限制，非缺陷**。
   - **后续 PR 决策项**：要么把这些全局配置路由 gated 到 `require_workspace_admin` / 专门 scope，要么显式声明"Stage 1 的 API key 在未被 `@require_permission` 装饰处为全权"。在 external_user 透传 / `scopes=[...]` 升级 PR 中一并处理。
+  - **【已解决 2026-06-28】** 改为 default-deny：service principal 只能访问数据平面（`/api/threads*`、`/api/runs*`、`/api/assistants`），所有控制平面路由（含 read）一律 403 `insufficient_scope`。实现见 `AuthMiddleware._is_dataplane_path`；设计见 [api-key-control-plane-default-deny-design](../../superpowers/specs/2026-06-28-api-key-control-plane-default-deny-design.md)。细粒度 scope 词汇升级仍按原计划推后。
 
 ## 9. 与后续 PR 的接口
 
