@@ -13,5 +13,6 @@ upgrade live in Stage 1 alongside the headless API surface.
 from __future__ import annotations
 
 from deerflow.persistence.service_account.model import ServiceAccountRow
+from deerflow.persistence.service_account.sql import ServiceAccountRepository
 
-__all__ = ["ServiceAccountRow"]
+__all__ = ["ServiceAccountRepository", "ServiceAccountRow"]
