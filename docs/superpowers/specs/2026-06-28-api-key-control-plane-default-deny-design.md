@@ -109,12 +109,13 @@ def _is_dataplane_path(path: str) -> bool:
     其余(全局控制平面:models/mcp/memory/skills/channels/agents 与
     管理/auth 端点)对 API key 一律拒绝。注意 `/api/langgraph` 被 nginx
     rewrite 掉,中间件看不到,故不在表内。将来 Pattern B 的 service-token
-    分支可复用本函数。
+    分支可复用本函数。匹配只在路径段边界命中(精确相等或后接 `/`),
+    避免同名前缀路由(如未来的 `/api/threads-export`)被悄悄放进白名单。
     """
-    return any(path.startswith(p) for p in _DATAPLANE_PREFIXES)
+    return any(path == p or path.startswith(p + "/") for p in _DATAPLANE_PREFIXES)
 ```
 
-> **前缀匹配的精度**：用 `startswith`,与 `_is_public` 一致。`/api/threads` 前缀不会误放行 `/api/threads-foo` 之类的路径吗?当前路由表无此类同名前缀冲突(控制平面均为独立段:`/api/models`、`/api/mcp` 等),故 `startswith` 安全。若未来出现冲突,改为带边界的匹配即可——本设计不预防尚不存在的冲突(YAGNI)。
+> **前缀匹配的精度（边界对齐）**：用"精确相等或 `prefix + "/"`"而非裸 `startswith`。这是 default-deny **白名单**——over-match 的方向是"误放行"(把控制平面误判成数据平面),与本设计"新增控制平面路由自动被拦"的承诺直接冲突。故即便当前路由表无同名前缀冲突,也用边界匹配把这条安全不变量钉死,让将来出现 `/api/threads-export` 之类路由时不会被悄悄纳入数据平面。（注:与 `_is_public` 的裸 `startswith` 有意不同——`_is_public` 是 Stage 1 既有代码,本次不动它。）
 
 ### 3.4 错误口径
 
