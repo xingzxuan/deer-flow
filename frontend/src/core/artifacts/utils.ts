@@ -15,7 +15,7 @@ export function urlOfArtifact({
   if (isMock) {
     return `${getBackendBaseURL()}/mock/api/threads/${threadId}/artifacts${filepath}${download ? "?download=true" : ""}`;
   }
-  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${filepath}${download ? "?download=true" : ""}`;
+  return `${getBackendBaseURL()}/api/v1/threads/${threadId}/artifacts${filepath}${download ? "?download=true" : ""}`;
 }
 
 export function extractArtifactsFromThread(thread: AgentThread) {
@@ -23,5 +23,5 @@ export function extractArtifactsFromThread(thread: AgentThread) {
 }
 
 export function resolveArtifactURL(absolutePath: string, threadId: string) {
-  return `${getBackendBaseURL()}/api/threads/${threadId}/artifacts${absolutePath}`;
+  return `${getBackendBaseURL()}/api/v1/threads/${threadId}/artifacts${absolutePath}`;
 }

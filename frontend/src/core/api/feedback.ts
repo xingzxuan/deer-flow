@@ -15,7 +15,7 @@ export async function upsertFeedback(
   comment?: string,
 ): Promise<FeedbackData> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/feedback`,
+    `${getBackendBaseURL()}/api/v1/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/feedback`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -33,7 +33,7 @@ export async function deleteFeedback(
   runId: string,
 ): Promise<void> {
   const res = await fetch(
-    `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/feedback`,
+    `${getBackendBaseURL()}/api/v1/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/feedback`,
     { method: "DELETE" },
   );
   if (!res.ok && res.status !== 404) {

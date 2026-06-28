@@ -4,14 +4,14 @@ import { getBackendBaseURL } from "@/core/config";
 import type { Skill } from "./type";
 
 export async function loadSkills() {
-  const skills = await fetch(`${getBackendBaseURL()}/api/skills`);
+  const skills = await fetch(`${getBackendBaseURL()}/api/v1/skills`);
   const json = await skills.json();
   return json.skills as Skill[];
 }
 
 export async function enableSkill(skillName: string, enabled: boolean) {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/skills/${skillName}`,
+    `${getBackendBaseURL()}/api/v1/skills/${skillName}`,
     {
       method: "PUT",
       headers: {
@@ -39,7 +39,7 @@ export interface InstallSkillResponse {
 export async function installSkill(
   request: InstallSkillRequest,
 ): Promise<InstallSkillResponse> {
-  const response = await fetch(`${getBackendBaseURL()}/api/skills/install`, {
+  const response = await fetch(`${getBackendBaseURL()}/api/v1/skills/install`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

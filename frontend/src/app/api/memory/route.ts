@@ -27,9 +27,9 @@ async function proxyRequest(request: NextRequest, pathname: string) {
 }
 
 export async function GET(request: NextRequest) {
-  return proxyRequest(request, "/api/memory");
+  return proxyRequest(request, "/api/v1/memory");
 }
 
 export async function DELETE(request: NextRequest) {
-  return proxyRequest(request, "/api/memory");
+  return proxyRequest(request, "/api/v1/memory");
 }

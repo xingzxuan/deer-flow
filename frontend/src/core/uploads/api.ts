@@ -52,7 +52,7 @@ export async function uploadFiles(
   });
 
   const response = await fetch(
-    `${getBackendBaseURL()}/api/threads/${threadId}/uploads`,
+    `${getBackendBaseURL()}/api/v1/threads/${threadId}/uploads`,
     {
       method: "POST",
       body: formData,
@@ -73,7 +73,7 @@ export async function listUploadedFiles(
   threadId: string,
 ): Promise<ListFilesResponse> {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/threads/${threadId}/uploads/list`,
+    `${getBackendBaseURL()}/api/v1/threads/${threadId}/uploads/list`,
   );
 
   if (!response.ok) {
@@ -93,7 +93,7 @@ export async function deleteUploadedFile(
   filename: string,
 ): Promise<{ success: boolean; message: string }> {
   const response = await fetch(
-    `${getBackendBaseURL()}/api/threads/${threadId}/uploads/${filename}`,
+    `${getBackendBaseURL()}/api/v1/threads/${threadId}/uploads/${filename}`,
     {
       method: "DELETE",
     },

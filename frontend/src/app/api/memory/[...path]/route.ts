@@ -30,26 +30,38 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return proxyRequest(request, `/api/memory/${(await params).path.join("/")}`);
+  return proxyRequest(
+    request,
+    `/api/v1/memory/${(await params).path.join("/")}`,
+  );
 }
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return proxyRequest(request, `/api/memory/${(await params).path.join("/")}`);
+  return proxyRequest(
+    request,
+    `/api/v1/memory/${(await params).path.join("/")}`,
+  );
 }
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return proxyRequest(request, `/api/memory/${(await params).path.join("/")}`);
+  return proxyRequest(
+    request,
+    `/api/v1/memory/${(await params).path.join("/")}`,
+  );
 }
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  return proxyRequest(request, `/api/memory/${(await params).path.join("/")}`);
+  return proxyRequest(
+    request,
+    `/api/v1/memory/${(await params).path.join("/")}`,
+  );
 }

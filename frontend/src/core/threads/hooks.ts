@@ -570,7 +570,7 @@ export function useThreadHistory(threadId: string) {
     try {
       setLoading(true);
       const result: { data: RunMessage[]; hasMore: boolean } = await fetch(
-        `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadIdRef.current)}/runs/${encodeURIComponent(run.run_id)}/messages`,
+        `${getBackendBaseURL()}/api/v1/threads/${encodeURIComponent(threadIdRef.current)}/runs/${encodeURIComponent(run.run_id)}/messages`,
         {
           method: "GET",
           headers: {
@@ -721,7 +721,7 @@ export function useDeleteThread() {
       await apiClient.threads.delete(threadId);
 
       const response = await fetch(
-        `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}`,
+        `${getBackendBaseURL()}/api/v1/threads/${encodeURIComponent(threadId)}`,
         {
           method: "DELETE",
         },

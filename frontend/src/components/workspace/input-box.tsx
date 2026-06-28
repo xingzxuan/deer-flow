@@ -408,7 +408,7 @@ export function InputBox({
     setFollowupsLoading(true);
     setFollowups([]);
 
-    fetch(`${getBackendBaseURL()}/api/threads/${threadId}/suggestions`, {
+    fetch(`${getBackendBaseURL()}/api/v1/threads/${threadId}/suggestions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
