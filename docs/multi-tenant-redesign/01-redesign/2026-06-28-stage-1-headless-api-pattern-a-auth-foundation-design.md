@@ -1,6 +1,6 @@
 # Stage 1 · Headless API Pattern A 鉴权地基 — 设计
 
-> 设计稿。日期 2026-06-28。承接 Stage 0（PR1-PR8 全部 merge，见 [STATUS.md](../../multi-tenant-redesign/03-impl/STATUS.md)）与 headless API 轨道设计 [headless-api-track.zh-CN.md](../../multi-tenant-redesign/02-rollout/headless-api-track.zh-CN.md)。
+> 设计稿。日期 2026-06-28。承接 Stage 0（PR1-PR8 全部 merge，见 [STATUS.md](../03-impl/STATUS.md)）与 headless API 轨道设计 [headless-api-track.zh-CN.md](../02-rollout/headless-api-track.zh-CN.md)。
 >
 > 范围：headless-api-track **轨道二（Pattern A）** 的鉴权地基。让业务系统 backend 能用 API key（`Authorization: Bearer dfk_...`）调通 DeerFlow Gateway——server-to-server。Pattern B（浏览器直连 + 短期 JWT）、external_user 透传、identity_mode 三态行为、rate limit 不在本 spec 范围（轨道二后续 PR / 轨道三）。
 
@@ -32,7 +32,7 @@
 | 授权装饰器 | `backend/app/gateway/authz.py` | `require_permission`（L197）、`AuthContext`（L62，含 `permissions: list[str]` + `has_permission`） |
 | 仓储样板 | `backend/packages/harness/deerflow/persistence/workspace/sql.py` | `WorkspaceRepository`（构造收 `session_factory`，每方法开 fresh session，`_row_to_dict`） |
 | session 工厂 | `backend/packages/harness/deerflow/persistence/engine.py` | `get_session_factory()` |
-| PR8 ORM | `persistence/{service_account,api_key,external_user}/model.py` | `ServiceAccountRow` / `ApiKeyRow` / `ExternalUserRow`（schema 已落，见 [pr8 impl note](../../multi-tenant-redesign/03-impl/pr8-headless-api-schema.md)） |
+| PR8 ORM | `persistence/{service_account,api_key,external_user}/model.py` | `ServiceAccountRow` / `ApiKeyRow` / `ExternalUserRow`（schema 已落，见 [pr8 impl note](../03-impl/pr8-headless-api-schema.md)） |
 | 路由挂载 | `backend/app/gateway/app.py` | `create_app()` 内 15 个 `include_router`（L379-421） |
 | 路由前缀约定 | `backend/app/gateway/routers/*.py` | 前缀**写死在 `APIRouter(prefix=...)`**；`auth.py` 已用 `/api/v1/auth`，证明 v1 与旧前缀共存 |
 | 前端 API 路径 | `frontend/src/core/*/api.ts`、`src/core/threads/hooks.ts` 等 | `getBackendBaseURL()` + 路径串；auth 已用 `/api/v1/auth`；langgraph-sdk 走 `/api/langgraph/*` |
@@ -174,7 +174,7 @@
 
 ## 10. 阅读路径
 
-- 宏观背景 → [headless-api-track.zh-CN.md](../../multi-tenant-redesign/02-rollout/headless-api-track.zh-CN.md)
-- Stage 0 现状 / 测试基线 → [STATUS.md](../../multi-tenant-redesign/03-impl/STATUS.md)
-- PR8 三表 schema → [pr8-headless-api-schema.md](../../multi-tenant-redesign/03-impl/pr8-headless-api-schema.md)
+- 宏观背景 → [headless-api-track.zh-CN.md](../02-rollout/headless-api-track.zh-CN.md)
+- Stage 0 现状 / 测试基线 → [STATUS.md](../03-impl/STATUS.md)
+- PR8 三表 schema → [pr8-headless-api-schema.md](../03-impl/pr8-headless-api-schema.md)
 - 本 spec 的实现计划 → （writing-plans 生成后回填链接）
