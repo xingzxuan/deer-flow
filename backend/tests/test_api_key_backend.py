@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import dataclasses
+
+import pytest
+
 from app.gateway.auth.api_key_backend import ServicePrincipal, parse_scopes
 
 
@@ -22,3 +26,9 @@ def test_service_principal_is_service_account_true_by_default():
     p = ServicePrincipal(id="sa-1")
     assert p.id == "sa-1"
     assert p.is_service_account is True
+
+
+def test_service_principal_is_frozen():
+    p = ServicePrincipal(id="sa-1")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        p.id = "other"  # type: ignore[misc]
