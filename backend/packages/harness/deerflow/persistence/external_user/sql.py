@@ -65,7 +65,12 @@ class ExternalUserRepository:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Insert a new external user or refresh ``last_seen_at`` on an
-        existing (service_account_id, external_id) row."""
+        existing (service_account_id, external_id) row.
+
+        ``display_name`` and ``metadata`` are only written when explicitly
+        passed (non-None); ``None`` means "leave unchanged" — you cannot
+        clear ``display_name`` back to None via this method. ``workspace_id``
+        is only used on insert; it is ignored on update."""
         now = datetime.now(UTC)
         async with self._sf() as session:
             result = await session.execute(
@@ -86,6 +91,9 @@ class ExternalUserRepository:
                     created_at=now,
                     last_seen_at=now,
                 )
+                # NOTE: concurrent inserts of the same pair will raise IntegrityError
+                # from uq_external_users_sa_external — the future auth caller should
+                # catch it and re-read rather than treat it as fatal.
                 session.add(row)
             else:
                 row.last_seen_at = now

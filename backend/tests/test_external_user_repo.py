@@ -64,6 +64,19 @@ async def test_upsert_inserts_then_updates_same_row(tmp_path):
         await _cleanup()
 
 
+async def test_get_by_id_hit_and_miss(tmp_path):
+    repo = await _make_repo(tmp_path)
+    try:
+        await _seed_sa(repo)
+        created = await repo.upsert(workspace_id="w-1", service_account_id="sa-1", external_id="ext-9")
+        fetched = await repo.get(created["id"])
+        assert fetched is not None
+        assert fetched["id"] == created["id"]
+        assert await repo.get("nonexistent") is None
+    finally:
+        await _cleanup()
+
+
 async def test_get_by_external_id(tmp_path):
     repo = await _make_repo(tmp_path)
     try:
