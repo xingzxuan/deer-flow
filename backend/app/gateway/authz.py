@@ -307,3 +307,18 @@ def require_permission(
         return wrapper
 
     return decorator
+
+
+def require_workspace_admin() -> None:
+    """FastAPI dependency: require the caller's workspace role to be
+    owner or admin. Reads the role from the workspace contextvar that
+    AuthMiddleware stamps per request.
+
+    Raises HTTPException 403 if no workspace is in context or the role is
+    below admin. Use on management endpoints (service accounts, API keys).
+    """
+    from deerflow.runtime.workspace_context import get_current_workspace
+
+    workspace = get_current_workspace()
+    if workspace is None or getattr(workspace, "role", None) not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="workspace owner/admin role required")
