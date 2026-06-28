@@ -22,6 +22,7 @@ from app.gateway.routers import (
     memory,
     models,
     runs,
+    service_accounts,
     skills,
     suggestions,
     thread_runs,
@@ -410,6 +411,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Auth API is mounted at /api/v1/auth
     app.include_router(auth.router)
+
+    # Service Accounts API is mounted at /api/v1/service-accounts
+    app.include_router(service_accounts.router)
 
     # Feedback API is mounted at /api/threads/{thread_id}/runs/{run_id}/feedback
     app.include_router(feedback.router)
