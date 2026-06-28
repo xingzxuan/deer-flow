@@ -2,9 +2,9 @@
 
 Format is irreversible once business systems integrate (spec D5):
 ``dfk_live_<24>`` / ``dfk_test_<24>``. The public ``key_prefix`` is the
-first 16 chars (``dfk_live_`` + 7 random) and is stored UNIQUE for audit
-logging; the DB only ever stores ``sha256(plaintext)`` hex, never the
-plaintext.
+leading slice of the plaintext (``dfk_live_`` plus a few random chars,
+length ``_PREFIX_LEN``) and is stored UNIQUE for audit logging; the DB
+only ever stores ``sha256(plaintext)`` hex, never the plaintext.
 """
 
 from __future__ import annotations

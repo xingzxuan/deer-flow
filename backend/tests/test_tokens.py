@@ -28,6 +28,7 @@ def test_generate_live_key_shape():
 def test_generate_test_key_prefix_env():
     key = generate_api_key("test")
     assert key.plaintext.startswith("dfk_test_")
+    assert len(key.plaintext) == 33
     assert key.prefix.startswith("dfk_test_")
 
 
@@ -43,7 +44,7 @@ def test_two_keys_are_unique():
     assert a.key_hash != b.key_hash
 
 
-def test_hash_is_deterministic_and_not_reversible():
+def test_hash_api_key_is_sha256_and_deterministic():
     plaintext = "dfk_live_abcdefghijklmnopqrstuvwx"
     h1 = hash_api_key(plaintext)
     h2 = hash_api_key(plaintext)
