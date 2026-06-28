@@ -12,5 +12,6 @@ header parsing, and quota attribution all live in Stage 1.
 from __future__ import annotations
 
 from deerflow.persistence.external_user.model import ExternalUserRow
+from deerflow.persistence.external_user.sql import ExternalUserRepository
 
-__all__ = ["ExternalUserRow"]
+__all__ = ["ExternalUserRepository", "ExternalUserRow"]
