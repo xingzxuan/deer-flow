@@ -123,3 +123,37 @@ async def test_member_cannot_create_key(tmp_path):
         assert r.status_code == 403
     finally:
         await _cleanup()
+
+
+async def test_revoke_other_workspace_key_404(tmp_path):
+    await _init_db_with_sa(tmp_path, sa_id="sa-1", workspace_id="w-1")
+    try:
+        client_a = TestClient(_make_app(workspace_id="w-1"))
+        created = client_a.post("/api/v1/api-keys", json={"service_account_id": "sa-1", "name": "k", "scopes": ""}).json()
+        client_b = TestClient(_make_app(workspace_id="w-2"))
+        assert client_b.delete(f"/api/v1/api-keys/{created['id']}").status_code == 404
+    finally:
+        await _cleanup()
+
+
+async def test_list_other_workspace_sa_404(tmp_path):
+    await _init_db_with_sa(tmp_path, sa_id="sa-1", workspace_id="w-1")
+    try:
+        client_b = TestClient(_make_app(workspace_id="w-2"))
+        assert client_b.get("/api/v1/api-keys", params={"service_account_id": "sa-1"}).status_code == 404
+    finally:
+        await _cleanup()
+
+
+async def test_create_for_suspended_sa_409(tmp_path):
+    await _init_db_with_sa(tmp_path)
+    try:
+        from deerflow.persistence.engine import get_session_factory
+        from deerflow.persistence.service_account import ServiceAccountRepository
+
+        await ServiceAccountRepository(get_session_factory()).update_status("sa-1", "suspended")
+        client = TestClient(_make_app())
+        r = client.post("/api/v1/api-keys", json={"service_account_id": "sa-1", "name": "x", "scopes": ""})
+        assert r.status_code == 409
+    finally:
+        await _cleanup()

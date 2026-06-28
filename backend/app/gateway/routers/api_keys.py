@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from app.gateway.authz import require_workspace_admin
@@ -66,11 +66,12 @@ async def _require_sa_in_workspace(sa_id: str, sa_repo: ServiceAccountRepository
 @router.post("", status_code=201, dependencies=[Depends(require_workspace_admin)])
 async def create_api_key(
     body: CreateApiKeyRequest,
-    request: Request,
     key_repo: ApiKeyRepository = Depends(get_api_key_repo),
     sa_repo: ServiceAccountRepository = Depends(get_service_account_repo),
 ):
-    await _require_sa_in_workspace(body.service_account_id, sa_repo)
+    sa = await _require_sa_in_workspace(body.service_account_id, sa_repo)
+    if sa["status"] != "active":
+        raise HTTPException(status_code=409, detail="service account is not active")
     gen = generate_api_key(body.env)
     created = await key_repo.create(
         service_account_id=body.service_account_id,
