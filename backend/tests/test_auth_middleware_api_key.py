@@ -69,7 +69,7 @@ def _make_app():
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
 
-    @app.get("/api/probe")
+    @app.get("/api/v1/threads/_probe")
     async def probe(request: Request):
         return {
             "user_id": get_effective_user_id(),
@@ -84,7 +84,7 @@ async def test_valid_bearer_sets_sa_contextvars(tmp_path):
     gen = await _seed_key(tmp_path)
     try:
         client = TestClient(_make_app())
-        r = client.get("/api/probe", headers={"Authorization": f"Bearer {gen.plaintext}"})
+        r = client.get("/api/v1/threads/_probe", headers={"Authorization": f"Bearer {gen.plaintext}"})
         assert r.status_code == 200
         assert r.json() == {"user_id": "sa-1", "workspace_id": "w-1", "is_sa": True}
     finally:
@@ -95,7 +95,7 @@ async def test_invalid_bearer_returns_401(tmp_path):
     await _seed_key(tmp_path)
     try:
         client = TestClient(_make_app())
-        r = client.get("/api/probe", headers={"Authorization": "Bearer dfk_live_bogus00000000000000000"})
+        r = client.get("/api/v1/threads/_probe", headers={"Authorization": "Bearer dfk_live_bogus00000000000000000"})
         assert r.status_code == 401
     finally:
         await _cleanup()
@@ -105,7 +105,7 @@ async def test_revoked_bearer_returns_401(tmp_path):
     gen = await _seed_key(tmp_path, revoke=True)
     try:
         client = TestClient(_make_app())
-        r = client.get("/api/probe", headers={"Authorization": f"Bearer {gen.plaintext}"})
+        r = client.get("/api/v1/threads/_probe", headers={"Authorization": f"Bearer {gen.plaintext}"})
         assert r.status_code == 401
     finally:
         await _cleanup()
@@ -117,7 +117,7 @@ async def test_non_dfk_bearer_falls_through_to_cookie_path(tmp_path):
         client = TestClient(_make_app())
         # A non-dfk bearer is NOT the API-key path; with no cookie the
         # cookie path 401s (NOT_AUTHENTICATED), proving no mis-route.
-        r = client.get("/api/probe", headers={"Authorization": "Bearer some.jwt.token"})
+        r = client.get("/api/v1/threads/_probe", headers={"Authorization": "Bearer some.jwt.token"})
         assert r.status_code == 401
         assert r.json()["detail"]["code"] == "not_authenticated"
     finally:
@@ -128,7 +128,7 @@ async def test_bare_prefix_bearer_returns_401(tmp_path):
     await _seed_key(tmp_path)
     try:
         client = TestClient(_make_app())
-        r = client.get("/api/probe", headers={"Authorization": "Bearer dfk_"})
+        r = client.get("/api/v1/threads/_probe", headers={"Authorization": "Bearer dfk_"})
         assert r.status_code == 401
     finally:
         await _cleanup()

@@ -92,7 +92,7 @@ def _probe_app():
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
 
-    @app.get("/api/probe")
+    @app.get("/api/v1/threads/_probe")
     async def probe(request: Request):
         return {"user_id": get_effective_user_id(), "workspace_id": get_effective_workspace_id()}
 
@@ -108,12 +108,12 @@ async def test_mint_use_and_cross_workspace_isolation(tmp_path):
         plaintext = key["plaintext"]
 
         probe = TestClient(_probe_app())
-        ok = probe.get("/api/probe", headers={"Authorization": f"Bearer {plaintext}"})
+        ok = probe.get("/api/v1/threads/_probe", headers={"Authorization": f"Bearer {plaintext}"})
         assert ok.status_code == 200
         assert ok.json() == {"user_id": sa["id"], "workspace_id": "w-1"}
 
         # A bogus / unknown key is rejected.
-        bad = probe.get("/api/probe", headers={"Authorization": "Bearer dfk_live_unknown0000000000000000"})
+        bad = probe.get("/api/v1/threads/_probe", headers={"Authorization": "Bearer dfk_live_unknown0000000000000000"})
         assert bad.status_code == 401
     finally:
         await _cleanup()
