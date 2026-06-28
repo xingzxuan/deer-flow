@@ -73,7 +73,7 @@
 - Create: `backend/packages/harness/deerflow/auth/tokens.py`
 - Test: `backend/tests/test_tokens.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_tokens.py`:
 
@@ -136,12 +136,12 @@ def test_split_prefix_takes_first_16():
     assert split_prefix("dfk_live_abcdefghijklmnop") == "dfk_live_abcdefg"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_tokens.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'deerflow.auth'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/packages/harness/deerflow/auth/__init__.py`:
 
@@ -217,12 +217,12 @@ def generate_api_key(env: Literal["live", "test"]) -> GeneratedKey:
     return GeneratedKey(plaintext=plaintext, prefix=split_prefix(plaintext), key_hash=hash_api_key(plaintext))
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_tokens.py -v`
 Expected: PASS（6 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add packages/harness/deerflow/auth/ tests/test_tokens.py
@@ -238,7 +238,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/packages/harness/deerflow/persistence/service_account/__init__.py`
 - Test: `backend/tests/test_service_account_repo.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_service_account_repo.py`:
 
@@ -342,12 +342,12 @@ async def test_list_by_workspace(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_service_account_repo.py -v`
 Expected: FAIL — `ImportError: cannot import name 'ServiceAccountRepository'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/packages/harness/deerflow/persistence/service_account/sql.py`:
 
@@ -467,12 +467,12 @@ from deerflow.persistence.service_account.sql import ServiceAccountRepository
 __all__ = ["ServiceAccountRepository", "ServiceAccountRow"]
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_service_account_repo.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add packages/harness/deerflow/persistence/service_account/ tests/test_service_account_repo.py
@@ -488,7 +488,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/packages/harness/deerflow/persistence/api_key/__init__.py`
 - Test: `backend/tests/test_api_key_repo.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_api_key_repo.py`:
 
@@ -635,12 +635,12 @@ async def test_list_by_service_account(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_repo.py -v`
 Expected: FAIL — `ImportError: cannot import name 'ApiKeyRepository'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/packages/harness/deerflow/persistence/api_key/sql.py`:
 
@@ -773,12 +773,12 @@ from deerflow.persistence.api_key.sql import ApiKeyRepository
 __all__ = ["ApiKeyRepository", "ApiKeyRow"]
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_repo.py -v`
 Expected: PASS（7 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add packages/harness/deerflow/persistence/api_key/ tests/test_api_key_repo.py
@@ -796,7 +796,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 > 本 PR 只建仓储（读方法 + upsert 骨架），**不接任何鉴权调用方**——透传逻辑留到轨道二后续 PR，与 PR8 建 schema 不接路由同思路（spec §5 PR1）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_external_user_repo.py`:
 
@@ -880,12 +880,12 @@ async def test_get_by_external_id(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_external_user_repo.py -v`
 Expected: FAIL — `ImportError: cannot import name 'ExternalUserRepository'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/packages/harness/deerflow/persistence/external_user/sql.py`:
 
@@ -1001,12 +1001,12 @@ from deerflow.persistence.external_user.sql import ExternalUserRepository
 __all__ = ["ExternalUserRepository", "ExternalUserRow"]
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_external_user_repo.py -v`
 Expected: PASS（2 tests）
 
-- [ ] **Step 5: PR1 收尾 — lint + boundary + commit**
+- [x] **Step 5: PR1 收尾 — lint + boundary + commit**
 
 Run boundary + lint（PR1 全在 deerflow 层，必须不引入 app import）:
 
@@ -1036,7 +1036,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Create: `backend/app/gateway/auth/api_key_backend.py`（本 task 只放 `ServicePrincipal` + `parse_scopes`，backend 类在 Task 2.2）
 - Test: `backend/tests/test_api_key_backend.py`（本 task 只测 parse_scopes + principal）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_api_key_backend.py`:
 
@@ -1067,12 +1067,12 @@ def test_service_principal_is_service_account_true_by_default():
     assert p.is_service_account is True
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_backend.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app.gateway.auth.api_key_backend'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Modify `backend/packages/harness/deerflow/runtime/user_context.py` — add the `is_service_account` attribute to the `CurrentUser` protocol. Change:
 
@@ -1157,12 +1157,12 @@ def parse_scopes(scopes: str) -> list[str]:
     return [s.strip() for s in scopes.split(",") if s.strip()]
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_backend.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add packages/harness/deerflow/runtime/user_context.py app/gateway/auth/models.py app/gateway/auth/api_key_backend.py tests/test_api_key_backend.py
@@ -1177,7 +1177,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/auth/api_key_backend.py`
 - Test: `backend/tests/test_api_key_backend.py`（追加 authenticate 测试）
 
-- [ ] **Step 1: 写失败测试**（追加到 `test_api_key_backend.py` 末尾）
+- [x] **Step 1: 写失败测试**（追加到 `test_api_key_backend.py` 末尾）
 
 ```python
 import pytest
@@ -1277,12 +1277,12 @@ async def test_authenticate_suspended_workspace_returns_none(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_backend.py -v`
 Expected: FAIL — `ImportError: cannot import name 'APIKeyAuthBackend'`
 
-- [ ] **Step 3: 写实现** — append to `backend/app/gateway/auth/api_key_backend.py`:
+- [x] **Step 3: 写实现** — append to `backend/app/gateway/auth/api_key_backend.py`:
 
 ```python
 from deerflow.auth.tokens import hash_api_key, split_prefix
@@ -1351,12 +1351,12 @@ def build_api_key_backend() -> APIKeyAuthBackend | None:
     return APIKeyAuthBackend(api_key_repo=ApiKeyRepository(sf), service_account_repo=ServiceAccountRepository(sf), workspace_repo=WorkspaceRepository(sf))
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_key_backend.py -v`
 Expected: PASS（9 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add app/gateway/auth/api_key_backend.py tests/test_api_key_backend.py
@@ -1371,7 +1371,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/auth_middleware.py`
 - Test: `backend/tests/test_auth_middleware_api_key.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_auth_middleware_api_key.py`:
 
@@ -1496,12 +1496,12 @@ async def test_non_dfk_bearer_falls_through_to_cookie_path(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_auth_middleware_api_key.py -v`
 Expected: FAIL — `test_valid_bearer_sets_sa_contextvars` returns 401（bearer 分支尚未实现）
 
-- [ ] **Step 3: 写实现** — modify `backend/app/gateway/auth_middleware.py`.
+- [x] **Step 3: 写实现** — modify `backend/app/gateway/auth_middleware.py`.
 
 Add imports near the top (after the existing `from app.gateway.auth.models import ActiveWorkspace`):
 
@@ -1553,12 +1553,12 @@ to:
         internal_user = None
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_auth_middleware_api_key.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: cookie 路径回归 + lint + commit**
+- [x] **Step 5: cookie 路径回归 + lint + commit**
 
 Run the existing middleware regression to prove the cookie path is untouched:
 
@@ -1586,7 +1586,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/csrf_middleware.py`
 - Test: `backend/tests/test_csrf_bearer.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_csrf_bearer.py`:
 
@@ -1642,12 +1642,12 @@ def test_has_bearer_header_detection():
     assert has_bearer_header(_req({})) is False
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_csrf_bearer.py -v`
 Expected: FAIL — `test_bearer_post_skips_csrf` returns 403；`has_bearer_header` ImportError
 
-- [ ] **Step 3: 写实现** — modify `backend/app/gateway/csrf_middleware.py`.
+- [x] **Step 3: 写实现** — modify `backend/app/gateway/csrf_middleware.py`.
 
 Add `has_bearer_header` after `should_check_csrf`, and call it inside `should_check_csrf`. Change:
 
@@ -1700,12 +1700,12 @@ def should_check_csrf(request: Request) -> bool:
     return True
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_csrf_bearer.py tests/test_csrf_middleware.py -v`
 Expected: PASS（new 3 + existing csrf suite unchanged）
 
-- [ ] **Step 5: lint + commit**
+- [x] **Step 5: lint + commit**
 
 ```bash
 cd backend && make lint && git add app/gateway/csrf_middleware.py tests/test_csrf_bearer.py
@@ -1726,7 +1726,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/authz.py`
 - Test: `backend/tests/test_require_workspace_admin.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_require_workspace_admin.py`:
 
@@ -1783,12 +1783,12 @@ def test_rejects_no_workspace():
     assert exc.value.status_code == 403
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_require_workspace_admin.py -v`
 Expected: FAIL — `ImportError: cannot import name 'require_workspace_admin'`
 
-- [ ] **Step 3: 写实现** — append to `backend/app/gateway/authz.py`:
+- [x] **Step 3: 写实现** — append to `backend/app/gateway/authz.py`:
 
 ```python
 def require_workspace_admin() -> None:
@@ -1806,12 +1806,12 @@ def require_workspace_admin() -> None:
         raise HTTPException(status_code=403, detail="workspace owner/admin role required")
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_require_workspace_admin.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add app/gateway/authz.py tests/test_require_workspace_admin.py
@@ -1829,7 +1829,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 > Router 依赖工厂：用 `Depends(get_service_account_repo)` 从全局 session factory 构造仓储，便于测试覆写。`workspace_id` 从 `get_current_workspace()` 读，`created_by` 从 `request.state.user.id` 读。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_service_accounts_router.py`:
 
@@ -1959,12 +1959,12 @@ async def test_patch_other_workspace_sa_404(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_service_accounts_router.py -v`
 Expected: FAIL — `ImportError: cannot import name 'service_accounts'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/app/gateway/routers/service_accounts.py`:
 
@@ -2060,12 +2060,12 @@ Modify `backend/app/gateway/app.py` — add to the router import block and regis
     app.include_router(service_accounts.router)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_service_accounts_router.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add app/gateway/routers/service_accounts.py app/gateway/app.py tests/test_service_accounts_router.py
@@ -2081,7 +2081,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/app.py`（import + include_router）
 - Test: `backend/tests/test_api_keys_router.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_api_keys_router.py`:
 
@@ -2213,12 +2213,12 @@ async def test_member_cannot_create_key(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_keys_router.py -v`
 Expected: FAIL — `ImportError: cannot import name 'api_keys'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/app/gateway/routers/api_keys.py`:
 
@@ -2342,12 +2342,12 @@ Modify `backend/app/gateway/app.py` — add `api_keys` to the router import grou
     app.include_router(api_keys.router)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_keys_router.py -v`
 Expected: PASS（4 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add app/gateway/routers/api_keys.py app/gateway/app.py tests/test_api_keys_router.py
@@ -2363,7 +2363,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 > 地基的"活体证明"（spec §7）：owner 建 SA → 建 key → 用 key 经真实 `AuthMiddleware` 调一个 owner_check 探针路由 → 跨 workspace key 得 404。把全链路（中间件 + 仓储 + 管理 endpoint）串起来。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_headless_api_smoke.py`:
 
@@ -2481,12 +2481,12 @@ async def test_mint_use_and_cross_workspace_isolation(tmp_path):
         await _cleanup()
 ```
 
-- [ ] **Step 2: 跑测试确认失败 / 通过**
+- [x] **Step 2: 跑测试确认失败 / 通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_headless_api_smoke.py -v`
 Expected: PASS（如果 PR2+PR4 实现正确，本 smoke 直接 green；若 FAIL 按报错修对应实现）
 
-- [ ] **Step 3: PR4 收尾 — 全量回归 + lint + commit**
+- [x] **Step 3: PR4 收尾 — 全量回归 + lint + commit**
 
 ```bash
 cd backend && make lint && make test
@@ -2513,7 +2513,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `backend/app/gateway/app.py`（add_middleware）
 - Test: `backend/tests/test_api_deprecation_header.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 Create `backend/tests/test_api_deprecation_header.py`:
 
@@ -2566,12 +2566,12 @@ def test_langgraph_path_no_header():
     assert "X-API-Deprecated" not in r.headers
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_deprecation_header.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'app.gateway.deprecation_middleware'`
 
-- [ ] **Step 3: 写实现**
+- [x] **Step 3: 写实现**
 
 Create `backend/app/gateway/deprecation_middleware.py`:
 
@@ -2617,12 +2617,12 @@ Modify `backend/app/gateway/app.py` — register the middleware. Find where `app
     app.add_middleware(ApiDeprecationMiddleware)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_deprecation_header.py -v`
 Expected: PASS（3 tests）
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && git add app/gateway/deprecation_middleware.py app/gateway/app.py tests/test_api_deprecation_header.py
@@ -2640,7 +2640,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 > 做法：每个 router 的 `APIRouter(prefix="/api/...")` 改成去掉 `/api` 前缀的相对前缀（如 `/api/models` → `/models`，`/api/threads/{thread_id}/uploads` → `/threads/{thread_id}/uploads`）；在 `app.py` 中每个 router `include_router(x.router, prefix="/api")` + `include_router(x.router, prefix="/api/v1")` 双挂。逐个改 + 每改一个跑该域已有测试，避免一次性全断。
 
-- [ ] **Step 1: 写失败测试**（先写双挂断言，红）
+- [x] **Step 1: 写失败测试**（先写双挂断言，红）
 
 Create `backend/tests/test_api_v1_dual_mount.py`:
 
@@ -2696,12 +2696,12 @@ def test_langgraph_not_versioned():
 
 > 注：`create_app` 的确切签名见 `app/gateway/app.py`（搜索 `def create_app`）。若它需要参数，按现有 `tests/` 中调用 `create_app` 的方式（grep `create_app(` in tests）对齐。若部分路由路径名（如 `/uploads/list`）与实际不符，先 grep 实际 `@router.get` 路径再校正断言字符串。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && PYTHONPATH=. uv run pytest tests/test_api_v1_dual_mount.py -v`
 Expected: FAIL — `/api/v1/models` etc. not in paths（尚未双挂）
 
-- [ ] **Step 3: 写实现** — 逐 router 改前缀 + app.py 双挂。
+- [x] **Step 3: 写实现** — 逐 router 改前缀 + app.py 双挂。
 
 对每个 legacy router 文件，把 `APIRouter(prefix="/api...")` 改为相对前缀。逐文件映射：
 
@@ -2738,7 +2738,7 @@ to:
 
 对全部 13 个 legacy router 同样处理。**保持不变**（不加 prefix、不双挂）：`auth.router`、`service_accounts.router`、`api_keys.router`、`assistants_compat.router`。
 
-- [ ] **Step 4: 跑测试确认通过 + 全域回归**
+- [x] **Step 4: 跑测试确认通过 + 全域回归**
 
 ```bash
 cd backend && PYTHONPATH=. uv run pytest tests/test_api_v1_dual_mount.py -v
@@ -2752,7 +2752,7 @@ cd backend && make test
 ```
 Expected: 全绿。**若有测试因路径断言失败**：那些测试断言的是旧 `/api/*` 路径，双挂保留了旧路径，故不应失败；如失败说明某 router 改成相对前缀时漏删/多删了 `/api`，回到 Step 3 校正该文件。
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd backend && make lint && git add app/gateway/routers/ app/gateway/app.py tests/test_api_v1_dual_mount.py
@@ -2768,25 +2768,25 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 > langgraph-sdk 客户端路径（`/api/langgraph/*`）与 auth（已 `/api/v1/auth`）**不动**。
 
-- [ ] **Step 1: 定位所有需改的路径串**
+- [x] **Step 1: 定位所有需改的路径串**
 
 ```bash
 cd frontend && grep -rn '"/api/' src/ | grep -v '/api/v1/' | grep -v '/api/langgraph'
 ```
 Expected: 列出所有仍指向无版本 `/api/...` 的 fetch 路径（models/mcp/memory/skills/threads/artifacts/uploads/feedback/runs 等）。逐条记录文件 + 行号。
 
-- [ ] **Step 2: 逐文件改为 `/api/v1/...`**
+- [x] **Step 2: 逐文件改为 `/api/v1/...`**
 
 对 Step 1 列出的每条路径，用 `Edit` 把 `"/api/<x>"` 改为 `"/api/v1/<x>"`（仅这些命中行；不要碰 `/api/langgraph` 与已含 `/api/v1` 的串）。
 
-- [ ] **Step 3: 验证无残留**
+- [x] **Step 3: 验证无残留**
 
 ```bash
 cd frontend && grep -rn '"/api/' src/ | grep -v '/api/v1/' | grep -v '/api/langgraph'
 ```
 Expected: 无输出（全部已迁，langgraph 除外）
 
-- [ ] **Step 4: 前端校验**
+- [x] **Step 4: 前端校验**
 
 ```bash
 cd frontend && pnpm lint && pnpm typecheck
@@ -2796,7 +2796,7 @@ Expected: PASS。若改动触及 env/auth/routing/build-sensitive 代码，追�
 cd frontend && BETTER_AUTH_SECRET=local-dev-secret pnpm build
 ```
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```bash
 cd frontend && git add src/
@@ -2807,21 +2807,21 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ### Task 5.4: 全栈回归收尾
 
-- [ ] **Step 1: 后端全量**
+- [x] **Step 1: 后端全量**
 
 ```bash
 cd backend && make lint && make test
 ```
 Expected: lint clean；test 全绿（基线 3250 passed + 31 skipped + ≤18 既有 caplog flake；无新增 flake）
 
-- [ ] **Step 2: 边界检查**
+- [x] **Step 2: 边界检查**
 
 ```bash
 cd backend && PYTHONPATH=. uv run pytest tests/test_harness_boundary.py tests/test_workspace_boundary.py -v
 ```
 Expected: PASS（PR1 的 deerflow 层代码未引入 `app.*` import；PR2 的 `is_service_account` 协议改动仍在 deerflow 内）
 
-- [ ] **Step 3: 回填 spec 链接 + commit**
+- [x] **Step 3: 回填 spec 链接 + commit**
 
 Modify `docs/multi-tenant-redesign/01-redesign/stage-1-headless-api-pattern-a-auth-foundation-design.zh-CN.md` §10，把：
 
