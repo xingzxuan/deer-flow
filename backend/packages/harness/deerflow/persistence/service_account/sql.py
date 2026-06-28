@@ -20,6 +20,10 @@ from deerflow.persistence.service_account.model import ServiceAccountRow
 _VALID_STATUSES = frozenset({"active", "suspended", "deleted"})
 
 
+class ServiceAccountValidationError(ValueError):
+    """Raised when service account input fails application-layer validation."""
+
+
 class ServiceAccountRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._sf = session_factory
@@ -48,6 +52,8 @@ class ServiceAccountRepository:
         identity_mode: str = "collapsed",
         status: str = "active",
     ) -> dict[str, Any]:
+        if status not in _VALID_STATUSES:
+            raise ServiceAccountValidationError(f"status {status!r} not in {_VALID_STATUSES!r}")
         now = datetime.now(UTC)
         row = ServiceAccountRow(
             id=str(uuid.uuid4()),
@@ -86,7 +92,7 @@ class ServiceAccountRepository:
 
     async def update_status(self, sa_id: str, status: str) -> None:
         if status not in _VALID_STATUSES:
-            raise ValueError(f"status {status!r} not in {_VALID_STATUSES!r}")
+            raise ServiceAccountValidationError(f"status {status!r} not in {_VALID_STATUSES!r}")
         async with self._sf() as session:
             await session.execute(update(ServiceAccountRow).where(ServiceAccountRow.id == sa_id).values(status=status, updated_at=datetime.now(UTC)))
             await session.commit()

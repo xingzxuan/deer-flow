@@ -95,3 +95,24 @@ async def test_list_by_workspace(tmp_path):
         assert {r["name"] for r in rows} == {"a", "b"}
     finally:
         await _cleanup()
+
+
+async def test_create_rejects_unknown_status(tmp_path):
+    repo = await _make_repo(tmp_path)
+    try:
+        await _seed_parents(repo)
+        with pytest.raises(ValueError):
+            await repo.create(workspace_id="w-1", name="x", created_by="u-alice", status="bogus")
+    finally:
+        await _cleanup()
+
+
+async def test_update_status_rejects_unknown_value(tmp_path):
+    repo = await _make_repo(tmp_path)
+    try:
+        await _seed_parents(repo)
+        sa = await repo.create(workspace_id="w-1", name="x", created_by="u-alice")
+        with pytest.raises(ValueError):
+            await repo.update_status(sa["id"], "not-a-status")
+    finally:
+        await _cleanup()
