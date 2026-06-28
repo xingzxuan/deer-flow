@@ -164,6 +164,14 @@
 | `/api/v1` 启用与 deprecation | 业务接了再换 prefix 不友好 | 全量双挂 + 旧路径 `X-API-Deprecated: 2027-01-01`（D3） |
 | scope 字符串格式 | 存量 key 的 scopes 解析依赖它 | 逗号分隔 `resource:action`（沿用 PR8 schema + 现有 permission 串） |
 
+## 8.1 已知限制（落地后复核确认，需后续 PR 决策）
+
+> 实现完成后的整体安全复核（2026-06-28）发现一处**符合本 spec 范围但值得显式记录**的最小权限缺口：
+
+- **scope 仅在 threads/runs 等 `@require_permission` 装饰的路由上生效。** `AuthContext.permissions`（由 key 的 scopes 填充）只被 `@require_permission` 读取，而该装饰器目前只挂在 threads/runs/uploads/artifacts/feedback/suggestions 上。`mcp`（`PUT /api/v1/mcp/config`）、`skills`（`POST /api/v1/skills/install`）、`channels`（`restart`）、`models`、`agents`、`memory` 等路由**只校验"已认证"，不校验 scope/role**。后果：一把 `scopes="threads:read"` 的 key 仍能改全局 MCP 配置、装技能、重启 channel；且这些目标是**进程级全局**（非 workspace 分区），对它们而言 workspace 隔离也不成立。
+  - 这与现有真人模型一致（真人拿 `_ALL_PERMISSIONS`，这些路由本就无授权），且 D4 / 非目标已把 `scopes=[...]` 显式参数化升级推后——故属**设计内的已知限制，非缺陷**。
+  - **后续 PR 决策项**：要么把这些全局配置路由 gated 到 `require_workspace_admin` / 专门 scope，要么显式声明"Stage 1 的 API key 在未被 `@require_permission` 装饰处为全权"。在 external_user 透传 / `scopes=[...]` 升级 PR 中一并处理。
+
 ## 9. 与后续 PR 的接口
 
 本 spec 的地基为轨道二后续 / 轨道三留好接缝：
