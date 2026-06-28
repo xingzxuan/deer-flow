@@ -657,6 +657,7 @@ repository returns ever carries the secret material.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -717,17 +718,30 @@ class ApiKeyRepository:
             row = await session.get(ApiKeyRow, key_id)
             return self._row_to_dict(row) if row else None
 
-    async def get_active_by_hash(self, key_hash: str) -> dict[str, Any] | None:
-        """Auth hot path: return the key iff not revoked and not expired."""
+    async def get_active_by_hash(self, key_hash: str, *, key_prefix: str) -> dict[str, Any] | None:
+        """Auth hot path: resolve an active, unexpired key.
+
+        Looks up by the indexed UNIQUE ``key_prefix`` (covered by partial
+        index ``idx_api_keys_active`` WHERE revoked_at IS NULL), then
+        verifies the full ``key_hash`` with a constant-time compare.
+        Returns None on miss / hash mismatch / revoked / expired. Expiry
+        filtered in Python (sqlite returns naive datetimes, postgres aware).
+        """
         async with self._sf() as session:
             result = await session.execute(
-                select(ApiKeyRow).where(ApiKeyRow.key_hash == key_hash, ApiKeyRow.revoked_at.is_(None))
+                select(ApiKeyRow).where(ApiKeyRow.key_prefix == key_prefix, ApiKeyRow.revoked_at.is_(None))
             )
             row = result.scalar_one_or_none()
             if row is None:
                 return None
-            if row.expires_at is not None and row.expires_at <= datetime.now(UTC):
+            if not secrets.compare_digest(row.key_hash, key_hash):
                 return None
+            expires_at = row.expires_at
+            if expires_at is not None:
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=UTC)
+                if expires_at <= datetime.now(UTC):
+                    return None
             return self._row_to_dict(row)
 
     async def list_by_service_account(self, service_account_id: str) -> list[dict[str, Any]]:
@@ -1081,18 +1095,21 @@ to:
 class CurrentUser(Protocol):
     """Structural type for the current authenticated user.
 
-    Requires ``.id: str`` plus ``.is_service_account: bool`` — the latter
-    distinguishes a human (cookie/JWT) principal from a headless service
-    account (API key). Concrete implementations:
+    Requires only ``.id: str`` — the persistence layer reads nothing else,
+    and keeping the contract minimal lets any ``.id``-bearing object (incl.
+    test fixtures) satisfy it. A principal MAY additionally carry
+    ``.is_service_account: bool`` to distinguish a headless service account
+    (API key) from a human; concrete carriers are
     ``app.gateway.auth.models.User`` (False) and
-    ``app.gateway.auth.api_key_backend.ServicePrincipal`` (True).
-    Readers that may run before either is set should use
-    ``getattr(user, "is_service_account", False)``.
+    ``app.gateway.auth.api_key_backend.ServicePrincipal`` (True). Since that
+    attribute is NOT part of this structural contract, app-layer readers
+    must access it defensively: ``getattr(user, "is_service_account", False)``.
     """
 
     id: str
-    is_service_account: bool
 ```
+
+> NOTE (revised after Task 2.1 review): `is_service_account` is deliberately NOT added to the `@runtime_checkable` protocol — doing so would make `isinstance(SimpleNamespace(id=...), CurrentUser)` return False and break every duck-typed fixture. It stays a concrete field on `User` / `ServicePrincipal` only, read via `getattr`.
 
 Modify `backend/app/gateway/auth/models.py` — add the field to `User` so the cookie path satisfies the protocol. After the `token_version` field (and before `default_workspace_id`), add:
 
@@ -1268,7 +1285,7 @@ Expected: FAIL — `ImportError: cannot import name 'APIKeyAuthBackend'`
 - [ ] **Step 3: 写实现** — append to `backend/app/gateway/auth/api_key_backend.py`:
 
 ```python
-from deerflow.auth.tokens import hash_api_key
+from deerflow.auth.tokens import hash_api_key, split_prefix
 
 
 @dataclass(frozen=True)
@@ -1290,7 +1307,9 @@ class APIKeyAuthBackend:
 
     async def authenticate(self, token: str) -> ApiKeyAuthResult | None:
         """Resolve a plaintext token to an auth result, or None (→ 401)."""
-        key = await self._api_key_repo.get_active_by_hash(hash_api_key(token))
+        # Look up by the indexed public prefix; the repo constant-time
+        # verifies the full hash (see Task 1.3 refactor).
+        key = await self._api_key_repo.get_active_by_hash(hash_api_key(token), key_prefix=split_prefix(token))
         if key is None:
             return None
 
@@ -1959,6 +1978,8 @@ cross-workspace targets return 404 (existence hidden).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -1971,8 +1992,12 @@ router = APIRouter(prefix="/api/v1/service-accounts", tags=["service-accounts"])
 
 class CreateServiceAccountRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
-    role: str = Field(default="member")
-    identity_mode: str = Field(default="collapsed")
+    # Constrained to Stage-1-supported values; repo stays permissive for
+    # forward-compat, but the public API must not persist values it can't
+    # honor. Widen in future stages (Stage 2 RBAC: role admin/viewer; the
+    # passthrough PR: identity_mode external_passthrough/both).
+    role: Literal["member"] = "member"
+    identity_mode: Literal["collapsed"] = "collapsed"
 
 
 class UpdateServiceAccountRequest(BaseModel):
@@ -2265,12 +2290,15 @@ async def _require_sa_in_workspace(sa_id: str, sa_repo: ServiceAccountRepository
 @router.post("", status_code=201, dependencies=[Depends(require_workspace_admin)])
 async def create_api_key(
     body: CreateApiKeyRequest,
-    request: Request,
     key_repo: ApiKeyRepository = Depends(get_api_key_repo),
     sa_repo: ServiceAccountRepository = Depends(get_service_account_repo),
 ):
-    await _require_sa_in_workspace(body.service_account_id, sa_repo)
-    gen = generate_api_key(body.env)  # type: ignore[arg-type]
+    sa = await _require_sa_in_workspace(body.service_account_id, sa_repo)
+    # Don't mint new keys for a suspended/deleted SA (list/revoke stay open
+    # so admins can still audit/clean up a suspended SA's existing keys).
+    if sa["status"] != "active":
+        raise HTTPException(status_code=409, detail="service account is not active")
+    gen = generate_api_key(body.env)
     created = await key_repo.create(
         service_account_id=body.service_account_id,
         key_prefix=gen.prefix,

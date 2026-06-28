@@ -177,4 +177,4 @@
 - 宏观背景 → [headless-api-track.zh-CN.md](../02-rollout/headless-api-track.zh-CN.md)
 - Stage 0 现状 / 测试基线 → [STATUS.zh-CN.md](../03-impl/STATUS.zh-CN.md)
 - PR8 三表 schema → [pr8-headless-api-schema.zh-CN.md](../03-impl/pr8-headless-api-schema.zh-CN.md)
-- 本 spec 的实现计划 → （writing-plans 生成后回填链接）
+- 本 spec 的实现计划 → [2026-06-28-stage-1-headless-api-pattern-a-auth-foundation.md](../../superpowers/plans/2026-06-28-stage-1-headless-api-pattern-a-auth-foundation.md)
