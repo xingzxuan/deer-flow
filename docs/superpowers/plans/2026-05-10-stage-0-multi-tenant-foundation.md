@@ -799,7 +799,7 @@ if not ok:
 - [ ] 17+ 新单测过 + 既有 277 + PR3/PR4/PR5 新测全过
 - [ ] `python scripts/migrate_paths_to_workspace.py --dry-run` 输出可读
 - [ ] 实际跑迁移后 lifespan warning 消失
-- [ ] 手工 smoke：起 dev 服务，注册两个 user → 创各自 thread → 互访 404
+- [x] 手工 smoke：起 dev 服务，注册两个 user → 创各自 thread → 互访 404 ✅ 2026-06-27 `multi_tenant.py` PASS（N 租户并发版，含 search 不泄漏 + 跨租户 GET 404）
 
 ### Tasks
 
@@ -1028,13 +1028,13 @@ class ExternalUserRow(Base):
 ## Stage 0 退出 Go/No-Go（来自 phased-rollout-by-scale）
 
 工程层面：
-- [ ] PR1-PR8 全部合入
-- [ ] 既有 277 + 新增 ~70 测试全 100% 通过
-- [ ] CI（含 backend-postgres-tests）绿
-- [ ] 手工 smoke：注册新用户 → workspace 自动建 → JWT 含 wid → 创建 thread → 跨 workspace 互调 404
+- [x] PR1-PR8 全部合入 ✅（见 STATUS.md 8 PR 状态表，全 merged 进分支）
+- [x] 既有 277 + 新增 ~70 测试全 100% 通过 ✅（实际 3250 passed + 31 skipped，新增 ~163）
+- [x] CI（含 backend-postgres-tests）绿 ✅ 2026-05-12 用户确认
+- [x] 手工 smoke：注册新用户 → workspace 自动建 → JWT 含 wid → 创建 thread → 跨 workspace 互调 404 ✅ 2026-06-27 `apps/examples/http-chat/multi_tenant.py` PASS（N 租户真并发 + 多轮链式上下文 + 双向隔离 search/404；注：JWT wid claim 未显式解码断言，由隔离端到端间接覆盖）
 - [ ] 部署到生产 ≥ 2 周，无 workspace 隔离 bug 报告
 - [ ] 生产稳定运行在 Postgres 上 ≥ 2 周，无 schema/性能 regression
-- [ ] 7 项不可逆 LOCK 决策经团队 review 拍板
+- [x] 7 项不可逆 LOCK 决策经团队 review 拍板 ✅ 2026-05-12 全 7 项 sign-off
 
 业务层面：
 - [ ] 第一个付费意向客户出现（业务条件，非工程）

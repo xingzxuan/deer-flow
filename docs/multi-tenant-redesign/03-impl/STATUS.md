@@ -2,11 +2,26 @@
 
 > **每完成 1 个 PR 后必更新**。本文是 Stage 0 唯一的"现在到哪了"权威来源——其它文件（plan、ADR、各 PR impl note）都是静态的，不反映执行进度。
 >
-> 上次更新：2026-05-14，PR8 merge 进 docs branch 后（Stage 0 工程全合）
+> 上次更新：2026-06-28——`multi_tenant.py` live smoke 跑通（2026-06-27 用户运行，用户确认 PASS），退出门「手工 smoke」项关闭。分支已由 `docs/multi-tenant-redesign` 改名为 `feat/multi-tenant`（origin + kcim 均同步）。
 
 ## 一句话状态
 
 **PR1-PR8 全部已 merge——Stage 0 工程层面收尾。** **PR8 (2026-05-14)** 落地：3 张新表 schema-only 为 Stage 1 headless API 准备底座——`service_accounts`（workspace-scoped 非人身份，`identity_mode` 三态：`collapsed` / `external_passthrough` / `both`，`created_by` FK RESTRICT）/ `api_keys`（service_account 凭证，`key_prefix` 全局 UNIQUE + 双驱动部分索引 `idx_api_keys_active` WHERE `revoked_at IS NULL`，`scopes` 用 String(1024) 不用 PG `text[]` 保 SQLite 兼容）/ `external_users`（passthrough 终端身份，复合 UNIQUE `(service_account_id, external_id)`，`workspace_id` 冗余存储加速聚合）。FK 行为：workspace/SA delete CASCADE、creator user delete RESTRICT。9 新单测（3 service_account + 3 api_key + 2 external_user + 1 反向 metadata registration）。**3250 passed + 31 skipped + 18 caplog flake**（PR7 末 3241 + 31 + 18；+9 passed，flake 数 0 增）。Stage 0 工程层面**仅剩用户跟进的 live smoke**（见下）；业务层面看 "Stage 0 退出 Go/No-Go"。
+
+## Live smoke 结果（2026-06-27 `multi_tenant.py`）
+
+**用户运行 `apps/examples/http-chat/multi_tenant.py` 打到运行中的 Gateway，确认 verdict = PASS。** 这是退出门「手工 smoke」项的实跑验证，且比清单要求更强。脚本（代码层面核实）实际断言的不变量：
+
+- **注册 → workspace 自动建**：每租户走 `POST /api/v1/auth/register` 新建用户，`GET /api/v1/auth/me` 返回 `default_workspace_id`（workspace 随注册自动创建）。
+- **真并发**：N 个租户各自独立 `requests.Session`（独立 cookie）放进线程池同时跑，输出「对话时间窗重叠」证据证明是真并发而非串行。
+- **多轮上下文保持**：每租户复用同一 thread 跑 N 轮链式对话（T1=a×b，之后每轮 +d，步长 d 每租户不同），逐轮校验上一轮结果，验证并发下各租户上下文互不串扰。
+- **双向隔离**：① `POST /api/threads/search` 只返回自己的 thread（不泄漏他人）；② 直接 `GET /api/threads/{他人 thread_id}` 一律返回 **404**（不是 403）。
+
+> 未核实数字（用户选择不编造）：本次运行的具体租户数 `DF_TENANTS`、轮数 `DF_TURNS`、逐轮通过数。如需精确记录，贴终端输出（含 `>>> PASS ✅` 行）后回填。
+>
+> **已知覆盖缺口**：退出门 smoke 文字里的「JWT 含 wid」脚本未显式解码 token 断言 wid claim——由隔离端到端工作间接覆盖，非字面级验证。
+
+**本次关闭的项**：退出门「手工 smoke：注册 → workspace 自动建 → 创建 thread → 跨 workspace 互调 404」✅；PR4 T4.14 真机注册 smoke ✅；PR6 T6.15 的「双账户互访 404」隔离部分 ✅（该 task 的文件迁移部分 `make migrate-paths` 仍 ⏳，见跳过表）。
 
 ## 8 PR 状态表
 
@@ -47,12 +62,12 @@ PR1 起到 PR8 末，从既有 ~3087 增到 3250 passed（+163 测试，覆盖�
 | PR2 T2.7 | 写 setup_wizard 推荐 PG 的代码 | 已在 PR1 T1.8 完整实现（empty commit `745a33e0` 仅做 task tracking） | 无需跟进 |
 | PR2 T2.8 | sqlite→pg 数据迁移工具 (`scripts/migrate_sqlite_to_postgres.py`) | plan 标 optional + Stage 0 没生产数据 | 如果出现"dev 用 SQLite 跑过一段、想保留数据迁 PG"的需求再补 |
 | PR2 T2.9 | `backend/CLAUDE.md` Database 段更新 | README 已覆盖 80% 价值 | 写 PR3 时顺手补一句（agent 自己能做，不阻塞） |
-| PR4 T4.14 | 真机 `make dev` smoke 注册流程 | agent 无法实际起 gateway daemon | 用户跟进；命令清单见 [pr4-auth-workspace.md "Live smoke 命令"](./pr4-auth-workspace.md#live-smoke-命令用户跟进) |
+| PR4 T4.14 | 真机 `make dev` smoke 注册流程 | agent 无法实际起 gateway daemon | ✅ done 2026-06-27——`multi_tenant.py` PASS 覆盖（注册 → workspace 自建 → me 返回 wid） |
 | PR4 follow-up | Regular user pre-PR4 backfill 脚本 | login 路径已 lazy backfill 覆盖；如果生产有大量预存 regular user，可补 batch 脚本 | 等真出现这个场景再写 |
 | PR4 follow-up | 17 个 pre-existing caplog flake 集中清理 | 跨多个 test 文件的 propagation 问题，与 PR4/5/6 无关 | 单独 follow-up 处理 |
 | ~~PR5 T5.11~~ | ~~ORM model.py `nullable=False` 翻转~~ | **PR6 已落** (commit `87ea715c`) | — |
 | PR5 T5.12 真机 PG smoke | `alembic 0002 → backfill → 0003` 端到端 | agent 不能起 RDS 操作 | 用户跟进；命令清单见 [pr5-business-workspace-id.md "Live smoke 命令"](./pr5-business-workspace-id.md#live-smoke-命令用户跟进) |
-| PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 用户跟进；命令清单见 [pr6-routes-paths-workspace.md "Live smoke 命令"](./pr6-routes-paths-workspace.md#live-smoke-命令用户跟进) |
+| PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 🟡 部分 done——「双账户互访 404」✅ 由 `multi_tenant.py`（2026-06-27 PASS）覆盖；文件迁移 `make migrate-paths` 部分仍 ⏳。命令清单见 [pr6-routes-paths-workspace.md "Live smoke 命令"](./pr6-routes-paths-workspace.md#live-smoke-命令用户跟进) |
 | PR8 RDS 三张表存在 | `psql "$DATABASE_URL" -c "\dt service_accounts api_keys external_users"` 看 3 行；`\d+ api_keys` 看 `idx_api_keys_active ... WHERE revoked_at IS NULL` | agent 没 RDS 凭证 | 用户跟进；命令清单见 [pr8-headless-api-schema.md "Live smoke 命令"](./pr8-headless-api-schema.md#live-smoke-命令用户跟进) |
 
 ## 即将遇到的开放问题（plan 末尾列的，下个 session 处理）
