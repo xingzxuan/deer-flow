@@ -104,6 +104,8 @@ async def revoke_api_key(
     key = await key_repo.get(key_id)
     if key is None:
         raise HTTPException(status_code=404, detail="api key not found")
-    await _require_sa_in_workspace(key["service_account_id"], sa_repo)
+    sa = await sa_repo.get(key["service_account_id"])
+    if sa is None or sa["workspace_id"] != _current_workspace_id():
+        raise HTTPException(status_code=404, detail="api key not found")
     await key_repo.revoke(key_id)
     return Response(status_code=204)

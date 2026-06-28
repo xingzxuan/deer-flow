@@ -157,3 +157,19 @@ async def test_create_for_suspended_sa_409(tmp_path):
         assert r.status_code == 409
     finally:
         await _cleanup()
+
+
+async def test_revoke_404_bodies_are_indistinguishable(tmp_path):
+    await _init_db_with_sa(tmp_path, sa_id="sa-1", workspace_id="w-1")
+    try:
+        client_a = TestClient(_make_app(workspace_id="w-1"))
+        created = client_a.post("/api/v1/api-keys", json={"service_account_id": "sa-1", "name": "k", "scopes": ""}).json()
+        client_b = TestClient(_make_app(workspace_id="w-2"))
+        # cross-workspace existing key, and a non-existent key, must return identical 404 bodies
+        cross = client_b.delete(f"/api/v1/api-keys/{created['id']}")
+        missing = client_b.delete("/api/v1/api-keys/does-not-exist")
+        assert cross.status_code == 404
+        assert missing.status_code == 404
+        assert cross.json() == missing.json()
+    finally:
+        await _cleanup()
