@@ -64,7 +64,7 @@ async def test_create_then_get_active_by_hash(tmp_path):
         gen, created = await _mint(repo)
         assert created["key_prefix"] == gen.prefix
         assert "key_hash" not in created  # never expose the hash in dicts
-        found = await repo.get_active_by_hash(gen.key_hash)
+        found = await repo.get_active_by_hash(gen.key_hash, key_prefix=gen.prefix)
         assert found is not None
         assert found["id"] == created["id"]
         assert found["scopes"] == "threads:read"
@@ -76,7 +76,17 @@ async def test_get_active_by_hash_miss_returns_none(tmp_path):
     repo = await _make_repo(tmp_path)
     try:
         await _seed_sa(repo)
-        assert await repo.get_active_by_hash("deadbeef") is None
+        assert await repo.get_active_by_hash("deadbeef", key_prefix="dfk_live_nomatch0") is None
+    finally:
+        await _cleanup()
+
+
+async def test_wrong_hash_for_valid_prefix_returns_none(tmp_path):
+    repo = await _make_repo(tmp_path)
+    try:
+        await _seed_sa(repo)
+        gen, _ = await _mint(repo)
+        assert await repo.get_active_by_hash("0" * 64, key_prefix=gen.prefix) is None
     finally:
         await _cleanup()
 
@@ -87,7 +97,7 @@ async def test_revoked_key_not_active(tmp_path):
         await _seed_sa(repo)
         gen, created = await _mint(repo)
         await repo.revoke(created["id"])
-        assert await repo.get_active_by_hash(gen.key_hash) is None
+        assert await repo.get_active_by_hash(gen.key_hash, key_prefix=gen.prefix) is None
     finally:
         await _cleanup()
 
@@ -98,7 +108,7 @@ async def test_expired_key_not_active(tmp_path):
         await _seed_sa(repo)
         past = datetime.now(UTC) - timedelta(hours=1)
         gen, _ = await _mint(repo, expires_at=past)
-        assert await repo.get_active_by_hash(gen.key_hash) is None
+        assert await repo.get_active_by_hash(gen.key_hash, key_prefix=gen.prefix) is None
     finally:
         await _cleanup()
 
@@ -109,7 +119,7 @@ async def test_future_expiry_still_active(tmp_path):
         await _seed_sa(repo)
         future = datetime.now(UTC) + timedelta(hours=1)
         gen, _ = await _mint(repo, expires_at=future)
-        assert await repo.get_active_by_hash(gen.key_hash) is not None
+        assert await repo.get_active_by_hash(gen.key_hash, key_prefix=gen.prefix) is not None
     finally:
         await _cleanup()
 
@@ -136,5 +146,23 @@ async def test_list_by_service_account(tmp_path):
         rows = await repo.list_by_service_account("sa-1")
         assert len(rows) == 2
         assert all("key_hash" not in r for r in rows)
+    finally:
+        await _cleanup()
+
+
+async def test_list_by_service_account_excludes_other_sa(tmp_path):
+    repo = await _make_repo(tmp_path)
+    try:
+        await _seed_sa(repo)
+        async with repo._sf() as session:
+            from deerflow.persistence.service_account.model import ServiceAccountRow
+
+            session.add(ServiceAccountRow(id="sa-2", workspace_id="w-1", name="bot2", role="member", identity_mode="collapsed", status="active", created_by="u-alice"))
+            await session.commit()
+        await _mint(repo)  # belongs to sa-1
+        g2 = generate_api_key("live")
+        await repo.create(service_account_id="sa-2", key_prefix=g2.prefix, key_hash=g2.key_hash, name="k2", scopes="")
+        rows = await repo.list_by_service_account("sa-1")
+        assert len(rows) == 1
     finally:
         await _cleanup()

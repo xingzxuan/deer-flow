@@ -1,7 +1,9 @@
 """SQLAlchemy-backed API key repository (Stage 1 PR1).
 
-``get_active_by_hash`` is the auth hot path. ``revoked_at IS NULL``
-rides the partial index ``idx_api_keys_active``; expiry is filtered in
+``get_active_by_hash`` is the auth hot path: it looks the key up by its
+public ``key_prefix`` — UNIQUE and covered by the partial index
+``idx_api_keys_active`` (WHERE revoked_at IS NULL) — then verifies the
+full ``key_hash`` with a constant-time compare. Expiry is filtered in
 Python so the behaviour is identical across sqlite/postgres drivers.
 
 ``_row_to_dict`` deliberately omits ``key_hash`` — no dict this
@@ -10,6 +12,7 @@ repository returns ever carries the secret material.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -70,17 +73,25 @@ class ApiKeyRepository:
             row = await session.get(ApiKeyRow, key_id)
             return self._row_to_dict(row) if row else None
 
-    async def get_active_by_hash(self, key_hash: str) -> dict[str, Any] | None:
-        """Auth hot path: return the key iff not revoked and not expired."""
+    async def get_active_by_hash(self, key_hash: str, *, key_prefix: str) -> dict[str, Any] | None:
+        """Auth hot path: resolve an active, unexpired key.
+
+        Looks the key up by its public ``key_prefix`` — UNIQUE and covered
+        by the partial index ``idx_api_keys_active`` (WHERE revoked_at IS
+        NULL) — then verifies the full ``key_hash`` with a constant-time
+        compare. Returns None on miss / hash mismatch / revoked / expired.
+        Expiry is filtered in Python so behaviour is driver-agnostic
+        (sqlite returns naive datetimes; postgres returns aware).
+        """
         async with self._sf() as session:
-            result = await session.execute(select(ApiKeyRow).where(ApiKeyRow.key_hash == key_hash, ApiKeyRow.revoked_at.is_(None)))
+            result = await session.execute(select(ApiKeyRow).where(ApiKeyRow.key_prefix == key_prefix, ApiKeyRow.revoked_at.is_(None)))
             row = result.scalar_one_or_none()
             if row is None:
                 return None
-            if row.expires_at is not None:
-                expires_at = row.expires_at
-                # SQLite (aiosqlite) returns naive datetimes even for DateTime(timezone=True);
-                # treat them as UTC so the comparison works driver-agnostically.
+            if not secrets.compare_digest(row.key_hash, key_hash):
+                return None
+            expires_at = row.expires_at
+            if expires_at is not None:
                 if expires_at.tzinfo is None:
                     expires_at = expires_at.replace(tzinfo=UTC)
                 if expires_at <= datetime.now(UTC):
@@ -95,7 +106,7 @@ class ApiKeyRepository:
     async def revoke(self, key_id: str) -> None:
         """Soft-revoke: set ``revoked_at`` (row is kept for audit)."""
         async with self._sf() as session:
-            await session.execute(update(ApiKeyRow).where(ApiKeyRow.id == key_id).values(revoked_at=datetime.now(UTC)))
+            await session.execute(update(ApiKeyRow).where(ApiKeyRow.id == key_id, ApiKeyRow.revoked_at.is_(None)).values(revoked_at=datetime.now(UTC)))
             await session.commit()
 
     async def touch_last_used(self, key_id: str) -> None:
