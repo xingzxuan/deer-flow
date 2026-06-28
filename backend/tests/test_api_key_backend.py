@@ -125,3 +125,13 @@ async def test_authenticate_suspended_workspace_returns_none(tmp_path):
         assert await backend.authenticate(gen.plaintext) is None
     finally:
         await _cleanup()
+
+
+async def test_authenticate_expired_key_returns_none(tmp_path):
+    from datetime import UTC, datetime
+
+    backend, gen = await _setup_backend(tmp_path, expires_at=datetime(2000, 1, 1, tzinfo=UTC))
+    try:
+        assert await backend.authenticate(gen.plaintext) is None
+    finally:
+        await _cleanup()
