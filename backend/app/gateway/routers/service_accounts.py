@@ -7,6 +7,8 @@ cross-workspace targets return 404 (existence hidden).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -19,8 +21,11 @@ router = APIRouter(prefix="/api/v1/service-accounts", tags=["service-accounts"])
 
 class CreateServiceAccountRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
-    role: str = Field(default="member")
-    identity_mode: str = Field(default="collapsed")
+    # Constrained to Stage-1-supported values; widen these Literals in
+    # future stages alongside the behavior (Stage 2 RBAC opens role
+    # admin/viewer; the passthrough PR opens identity_mode).
+    role: Literal["member"] = "member"
+    identity_mode: Literal["collapsed"] = "collapsed"
 
 
 class UpdateServiceAccountRequest(BaseModel):

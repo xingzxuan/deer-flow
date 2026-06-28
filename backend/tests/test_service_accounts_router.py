@@ -121,3 +121,26 @@ async def test_patch_other_workspace_sa_404(tmp_path):
         assert r.status_code == 404
     finally:
         await _cleanup()
+
+
+async def test_list_is_scoped_to_current_workspace(tmp_path):
+    await _init_db(tmp_path)
+    try:
+        w1 = TestClient(_make_app(role="owner", workspace_id="w-1"))
+        w1.post("/api/v1/service-accounts", json={"name": "bot-w1"})
+        # A caller in w-2 must NOT see w-1's service accounts.
+        w2 = TestClient(_make_app(role="owner", workspace_id="w-2"))
+        rows = w2.get("/api/v1/service-accounts").json()
+        assert rows == []
+    finally:
+        await _cleanup()
+
+
+async def test_create_rejects_unknown_role(tmp_path):
+    await _init_db(tmp_path)
+    try:
+        client = TestClient(_make_app(role="owner"))
+        r = client.post("/api/v1/service-accounts", json={"name": "x", "role": "superadmin"})
+        assert r.status_code == 422
+    finally:
+        await _cleanup()
