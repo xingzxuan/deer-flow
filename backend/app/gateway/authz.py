@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 from fastapi import HTTPException, Request
 
 if TYPE_CHECKING:
+    from app.gateway.auth.api_key_backend import ServicePrincipal
     from app.gateway.auth.models import User
 
 P = ParamSpec("P")
@@ -65,13 +66,14 @@ class AuthContext:
     Stored in request.state.auth after require_auth decoration.
 
     Attributes:
-        user: The authenticated user, or None if anonymous
+        user: The authenticated principal (human ``User`` or
+            ``ServicePrincipal`` for API-key requests), or None if anonymous
         permissions: List of permission strings (e.g., "threads:read")
     """
 
     __slots__ = ("user", "permissions")
 
-    def __init__(self, user: User | None = None, permissions: list[str] | None = None):
+    def __init__(self, user: User | ServicePrincipal | None = None, permissions: list[str] | None = None):
         self.user = user
         self.permissions = permissions or []
 
@@ -93,8 +95,11 @@ class AuthContext:
         permission = f"{resource}:{action}"
         return permission in self.permissions
 
-    def require_user(self) -> User:
-        """Get user or raise 401.
+    def require_user(self) -> User | ServicePrincipal:
+        """Get the authenticated principal or raise 401.
+
+        Returns the human ``User`` or the ``ServicePrincipal`` backing an
+        API key, depending on how the request authenticated.
 
         Raises:
             HTTPException 401 if not authenticated

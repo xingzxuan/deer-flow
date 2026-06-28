@@ -9,6 +9,7 @@ owner filtering works automatically via the sentinel pattern.
 Fine-grained permission checks remain in authz.py decorators.
 """
 
+import logging
 from collections.abc import Callable
 
 from fastapi import HTTPException, Request, Response
@@ -23,6 +24,8 @@ from app.gateway.authz import _ALL_PERMISSIONS, AuthContext
 from app.gateway.internal_auth import INTERNAL_AUTH_HEADER_NAME, get_internal_user, is_valid_internal_auth_token
 from deerflow.runtime.user_context import reset_current_user, set_current_user
 from deerflow.runtime.workspace_context import reset_current_workspace, set_current_workspace
+
+logger = logging.getLogger(__name__)
 
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
@@ -87,7 +90,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if auth_header.startswith("Bearer dfk_"):
             token = auth_header[len("Bearer ") :]
             backend = build_api_key_backend()
-            result = await backend.authenticate(token) if backend is not None else None
+            try:
+                result = await backend.authenticate(token) if backend is not None else None
+            except Exception:
+                logger.exception("API key authentication failed unexpectedly")
+                return JSONResponse(status_code=503, content={"detail": "Authentication service unavailable"})
             if result is None:
                 return JSONResponse(
                     status_code=401,

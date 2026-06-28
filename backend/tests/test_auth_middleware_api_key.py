@@ -122,3 +122,13 @@ async def test_non_dfk_bearer_falls_through_to_cookie_path(tmp_path):
         assert r.json()["detail"]["code"] == "not_authenticated"
     finally:
         await _cleanup()
+
+
+async def test_bare_prefix_bearer_returns_401(tmp_path):
+    await _seed_key(tmp_path)
+    try:
+        client = TestClient(_make_app())
+        r = client.get("/api/probe", headers={"Authorization": "Bearer dfk_"})
+        assert r.status_code == 401
+    finally:
+        await _cleanup()
