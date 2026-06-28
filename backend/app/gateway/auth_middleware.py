@@ -16,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from app.gateway.auth.api_key_backend import build_api_key_backend
 from app.gateway.auth.errors import AuthErrorCode, AuthErrorResponse
 from app.gateway.auth.models import ActiveWorkspace
 from app.gateway.authz import _ALL_PERMISSIONS, AuthContext
@@ -77,6 +78,30 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if _is_public(request.url.path):
             return await call_next(request)
+
+        # API key path: "Authorization: Bearer dfk_..." authenticates a
+        # service account. Resolved principal is mapped to the same
+        # (user_id, workspace_id) contextvars a human would set (spec D1),
+        # so all downstream isolation works unchanged.
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer dfk_"):
+            token = auth_header[len("Bearer ") :]
+            backend = build_api_key_backend()
+            result = await backend.authenticate(token) if backend is not None else None
+            if result is None:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": AuthErrorResponse(code=AuthErrorCode.TOKEN_INVALID, message="Invalid API key").model_dump()},
+                )
+            request.state.user = result.principal
+            request.state.auth = AuthContext(user=result.principal, permissions=result.permissions)
+            user_token = set_current_user(result.principal)
+            ws_token = set_current_workspace(ActiveWorkspace(id=result.workspace_id, role=result.role))
+            try:
+                return await call_next(request)
+            finally:
+                reset_current_workspace(ws_token)
+                reset_current_user(user_token)
 
         internal_user = None
         if is_valid_internal_auth_token(request.headers.get(INTERNAL_AUTH_HEADER_NAME)):
