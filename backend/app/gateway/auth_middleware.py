@@ -73,8 +73,14 @@ _DATAPLANE_PREFIXES: tuple[str, ...] = (
 
 def _is_dataplane_path(path: str) -> bool:
     """True if an API key request may reach this path. Reusable by a future
-    Pattern B service-token branch."""
-    return any(path.startswith(prefix) for prefix in _DATAPLANE_PREFIXES)
+    Pattern B service-token branch.
+
+    Matches a prefix only at a path-segment boundary (exact match, or the
+    prefix immediately followed by ``/``), so the allowlist can't be silently
+    widened by a similarly-named route — e.g. ``/api/threads-export`` shares
+    the ``/api/threads`` prefix but crosses no segment boundary, so it stays
+    denied."""
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in _DATAPLANE_PREFIXES)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -121,6 +127,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": AuthErrorResponse(code=AuthErrorCode.TOKEN_INVALID, message="Invalid API key").model_dump()},
+                )
+            # Default-deny: a service principal may only reach the data plane
+            # (threads/runs/assistants). Control-plane routes (mcp/skills/
+            # channels/models/agents/memory + management/auth) are global,
+            # un-partitioned config — never reachable by an API key. New
+            # control-plane routes are denied automatically (allowlist, not
+            # blocklist). Humans (cookie path) never enter this branch.
+            if not _is_dataplane_path(request.url.path):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": AuthErrorResponse(code=AuthErrorCode.INSUFFICIENT_SCOPE, message="API keys cannot access this endpoint").model_dump()},
                 )
             request.state.user = result.principal
             request.state.auth = AuthContext(user=result.principal, permissions=result.permissions)
