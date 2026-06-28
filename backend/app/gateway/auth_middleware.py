@@ -55,6 +55,28 @@ def _is_public(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
 
 
+# Data-plane / SDK route prefixes a service principal (API key) may reach.
+# Everything else (global control plane: models/mcp/memory/skills/channels/
+# agents, plus management/auth endpoints) is denied by default for API keys.
+# NOTE: nginx rewrites /api/langgraph/(.*) -> /api/$1 before the gateway, so
+# AuthMiddleware never sees /api/langgraph; the SDK surface arrives as
+# /api/threads, /api/runs, /api/assistants. assistants.search()/get() is
+# required for langgraph-sdk client init, so /api/assistants is allowed.
+_DATAPLANE_PREFIXES: tuple[str, ...] = (
+    "/api/threads",
+    "/api/v1/threads",
+    "/api/runs",
+    "/api/v1/runs",
+    "/api/assistants",
+)
+
+
+def _is_dataplane_path(path: str) -> bool:
+    """True if an API key request may reach this path. Reusable by a future
+    Pattern B service-token branch."""
+    return any(path.startswith(prefix) for prefix in _DATAPLANE_PREFIXES)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Strict auth gate: reject requests without a valid session.
 

@@ -22,6 +22,7 @@ class AuthErrorCode(StrEnum):
     NOT_AUTHENTICATED = "not_authenticated"
     SYSTEM_ALREADY_INITIALIZED = "system_already_initialized"
     WORKSPACE_REQUIRED = "workspace_required"
+    INSUFFICIENT_SCOPE = "insufficient_scope"
 
 
 class TokenError(StrEnum):
