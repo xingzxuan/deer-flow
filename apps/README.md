@@ -49,6 +49,18 @@ DF_BASE=http://localhost:8001 DF_TENANTS=4 DF_TURNS=10 \
 
 环境变量：`DF_BASE`（网关地址，默认 :8001）、`DF_TENANTS`（并发租户数，默认 3）、`DF_TURNS`（每租户轮数，默认 10）。每次运行用唯一邮箱新建租户，可重复跑，不撞 email、也不触发登录限流（`/register` 不限流；`setup-status` 全程只调一次以避开 60s/IP 限流）。
 
+### 多租户验证（Headless / API Key 模式）
+
+[`examples/http-chat/multi_tenant_headless.py`](examples/http-chat/multi_tenant_headless.py) 是上面那个测试的 **server-to-server（无人值守）** 版，验证 Stage 1 的 API Key 鉴权：每个租户先由一个人类 owner（cookie 会话）建 service account 并 mint 一把 workspace-scoped key（`POST /api/v1/service-accounts` → `POST /api/v1/api-keys`，plaintext 仅返回一次），之后所有对话只用 `Authorization: Bearer dfk_live_...`（独立 Session、**不带 cookie / CSRF**）。除并发 / 上下文 / 隔离（同 cookie 版）外，额外校验两条 headless 专属性质：④ **scope 强制**——一把缺 `runs:create` 的 key 发起对话返回 403；⑤ **撤销即失效**——`DELETE /api/v1/api-keys/{id}` 后该 key 立即 401。
+
+```bash
+# 前提：已起 Gateway（dev-gateway 或 dev-full）
+DF_BASE=http://localhost:8001 DF_TENANTS=4 DF_TURNS=10 \
+  uv run --no-project --with requests python apps/examples/http-chat/multi_tenant_headless.py
+```
+
+环境变量同上，外加 `DF_EXTRA=0` 可跳过 scope / 撤销专项检查。实测（`:8001`，`DF_TENANTS=2 DF_TURNS=3`）全绿：真并发、多轮上下文保持、跨租户 `GET` 均 404、只读 key stream 403、撤销后 401。
+
 ## 前置：先把 DeerFlow 跑起来
 
 在**仓库根目录**：
@@ -91,7 +103,7 @@ Gateway 是 **fail-closed** 的——除少数公开路径外所有请求都要�
 3. 成功后 Session 里有 `access_token`(HttpOnly) + `csrf_token` 两个 cookie
 4. **所有写请求**（POST/PUT/DELETE/PATCH）必须带 `X-CSRF-Token` 头 = `csrf_token` 值
 
-> 多租户：当前 `docs/multi-tenant-redesign` 分支的 API Key 鉴权中间件尚未接入，外部系统暂时只能走会话 cookie。等 `Authorization: Bearer dfk_live_...` 落地后再补无人值守接入。每个注册用户即一个独立租户（自带 workspace）；并发与隔离行为可用上面的 [`multi_tenant.py`](examples/http-chat/multi_tenant.py) 验证。
+> 多租户：浏览器式接入走会话 cookie（每个注册用户即一个独立租户，自带 workspace），并发与隔离可用 [`multi_tenant.py`](examples/http-chat/multi_tenant.py) 验证。**无人值守 / 业务后端**接入已支持 API Key（Stage 1）：owner 经 `POST /api/v1/service-accounts` + `POST /api/v1/api-keys` mint 一把 key，业务侧用 `Authorization: Bearer dfk_live_...` 直连（免 cookie / CSRF），端到端示例见 [`multi_tenant_headless.py`](examples/http-chat/multi_tenant_headless.py)。
 
 ## 新建一个应用
 
