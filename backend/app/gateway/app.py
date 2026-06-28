@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.gateway.auth_middleware import AuthMiddleware
 from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CSRFMiddleware
+from app.gateway.deprecation_middleware import ApiDeprecationMiddleware
 from app.gateway.deps import langgraph_runtime
 from app.gateway.routers import (
     agents,
@@ -355,6 +356,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # CSRF: Double Submit Cookie pattern for state-changing requests
     app.add_middleware(CSRFMiddleware)
+
+    # Deprecation: stamp X-API-Deprecated on unversioned /api/* responses
+    app.add_middleware(ApiDeprecationMiddleware)
 
     # CORS: when GATEWAY_CORS_ORIGINS is set (dev without nginx), add CORS middleware.
     # In production, nginx handles CORS and no middleware is needed.
