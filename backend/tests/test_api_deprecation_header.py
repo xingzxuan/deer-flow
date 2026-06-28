@@ -25,6 +25,10 @@ def _make_app():
     async def lg():
         return {"ok": True}
 
+    @app.get("/api/assistants/info")
+    async def assistants():
+        return {"ok": True}
+
     return app
 
 
@@ -44,3 +48,12 @@ def test_langgraph_path_no_header():
     client = TestClient(_make_app())
     r = client.get("/api/langgraph/info")
     assert "X-API-Deprecated" not in r.headers
+
+
+def test_assistants_compat_path_gets_deprecation_header():
+    # assistants_compat is an un-versioned LangGraph-platform stub; it
+    # intentionally carries the deprecation header (it is /api/, not
+    # /api/v1 or /api/langgraph). Documented here to prevent confusion.
+    client = TestClient(_make_app())
+    r = client.get("/api/assistants/info")
+    assert r.headers.get("X-API-Deprecated") == "2027-01-01"

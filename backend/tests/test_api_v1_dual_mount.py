@@ -25,11 +25,16 @@ def test_runs_dual_mounted():
     assert "/api/v1/runs/stream" in paths
 
 
-def test_threads_dual_mounted():
+def test_every_legacy_api_path_has_v1_twin():
+    """Strong invariant: every unversioned /api/* path (except the
+    intentionally-excluded surfaces) must also exist under /api/v1/*.
+    Catches any single legacy router losing its v1 mount."""
     paths = _paths()
-    # at least one threads sub-path must exist on both surfaces
-    assert any(p.startswith("/api/threads/") for p in paths)
-    assert any(p.startswith("/api/v1/threads/") for p in paths)
+    excluded_prefixes = ("/api/v1/", "/api/langgraph/", "/api/assistants")
+    legacy = {p for p in paths if p.startswith("/api/") and not p.startswith(excluded_prefixes)}
+    assert legacy, "expected some unversioned /api/* paths"
+    missing = sorted(p for p in legacy if ("/api/v1/" + p[len("/api/") :]) not in paths)
+    assert missing == [], f"legacy /api paths without an /api/v1 twin: {missing}"
 
 
 def test_uploads_dual_mounted():
