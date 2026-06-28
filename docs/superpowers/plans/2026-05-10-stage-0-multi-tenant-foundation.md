@@ -196,7 +196,7 @@ async def postgres_url(postgres_container):
 - [ ] **T1.7 doctor.py 加 PG 探测**：仅在 `database.backend == 'postgres'` 时调 `asyncpg.connect(url)` + 报 PG version；测试 `database.backend: sqlite` 时不查 PG（regression）；commit
 - [ ] **T1.8 setup_wizard.py 加交互**：选数据库后端时新增 postgres 选项 + DATABASE_URL 引导；commit
 - [ ] **T1.9 加 CI workflow**：新建 `.github/workflows/backend-postgres-tests.yml`（用 docker service 或让 testcontainers 在 GitHub runner 起 PG）跑 `pytest -m postgres -v`；本地推到 fork 验证 CI 绿；commit
-- [ ] **T1.10 验收 + 文档**：跑全套 `cd backend && make test` 验证既有 277 测试不破；`docs/multi-tenant-redesign/03-impl/pr1-postgres-setup.md` 记录 PG 版本对齐结论 + fixture 用法；commit
+- [ ] **T1.10 验收 + 文档**：跑全套 `cd backend && make test` 验证既有 277 测试不破；`docs/multi-tenant-redesign/03-impl/pr1-postgres-setup.zh-CN.md` 记录 PG 版本对齐结论 + fixture 用法；commit
 
 ---
 
@@ -217,7 +217,7 @@ async def postgres_url(postgres_container):
 
 **新增**：
 - `scripts/migrate_sqlite_to_postgres.py` — SQLAlchemy reflection 把现有 4 张表数据搬过去
-- `docs/multi-tenant-redesign/03-impl/pr2-postgres-default.md`（implementation note，可选）
+- `docs/multi-tenant-redesign/03-impl/pr2-postgres-default.zh-CN.md`（implementation note，可选）
 
 **修改**：
 - `config.example.yaml` — `database` 段默认 postgres
@@ -1028,7 +1028,7 @@ class ExternalUserRow(Base):
 ## Stage 0 退出 Go/No-Go（来自 phased-rollout-by-scale）
 
 工程层面：
-- [x] PR1-PR8 全部合入 ✅（见 STATUS.md 8 PR 状态表，全 merged 进分支）
+- [x] PR1-PR8 全部合入 ✅（见 STATUS.zh-CN.md 8 PR 状态表，全 merged 进分支）
 - [x] 既有 277 + 新增 ~70 测试全 100% 通过 ✅（实际 3250 passed + 31 skipped，新增 ~163）
 - [x] CI（含 backend-postgres-tests）绿 ✅ 2026-05-12 用户确认
 - [x] 手工 smoke：注册新用户 → workspace 自动建 → JWT 含 wid → 创建 thread → 跨 workspace 互调 404 ✅ 2026-06-27 `apps/examples/http-chat/multi_tenant.py` PASS（N 租户真并发 + 多轮链式上下文 + 双向隔离 search/404；注：JWT wid claim 未显式解码断言，由隔离端到端间接覆盖）

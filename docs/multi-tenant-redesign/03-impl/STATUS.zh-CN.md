@@ -28,14 +28,14 @@
 | PR | 状态 | Commits | 分支 / 落点 | impl note |
 |---|---|---|---|---|
 | **PR0** | ✅ merged | 1 | `a74b88a4` on docs branch | — |
-| **PR1** | ✅ merged | 8 (T1.1-T1.10) | merged into docs branch (`fab85b14..85a14f4c`) | [pr1-postgres-setup.md](./pr1-postgres-setup.md) |
-| **PR2** | ✅ merged | 8 (T2.1-T2.10) | merged into docs branch (`404135a1..1112a197`) | [pr2-postgres-default.md](./pr2-postgres-default.md) |
-| **PR3** | ✅ merged | 7 (T3.1-T3.10) | merged into docs branch (`f63089ae..dda82640`) | [pr3-workspaces.md](./pr3-workspaces.md) |
-| **PR4** | ✅ merged | 14 (T4.1-T4.14) | merged into docs branch (`d98498b7..5c7753c0`) | [pr4-auth-workspace.md](./pr4-auth-workspace.md) |
-| **PR5** | ✅ merged | 11 (T5.1-T5.10 + T5.12) | merged into docs branch (`a7326978..30f2bd00`) | [pr5-business-workspace-id.md](./pr5-business-workspace-id.md) |
-| **PR6** | ✅ merged | 13 (T5.11 + T6.1-T6.15) | merged into docs branch (`361e653d..87ea715c`) | [pr6-routes-paths-workspace.md](./pr6-routes-paths-workspace.md) |
-| **PR7** | ✅ merged | 4 (T7.1-T7.3 + T7.5; T7.4 是反注入验证无代码改动) | merged into docs branch (`1a6ccc9a..d8b13afc`) | [pr7-ci-boundary-scan.md](./pr7-ci-boundary-scan.md) |
-| **PR8** | ✅ merged | 5 (T8.1 + T8.2/T8.3 合并 + T8.4 + T8.5 + T8.6) | merged into docs branch (`1fb07e48..f803f393`) | [pr8-headless-api-schema.md](./pr8-headless-api-schema.md) |
+| **PR1** | ✅ merged | 8 (T1.1-T1.10) | merged into docs branch (`fab85b14..85a14f4c`) | [pr1-postgres-setup.zh-CN.md](./pr1-postgres-setup.zh-CN.md) |
+| **PR2** | ✅ merged | 8 (T2.1-T2.10) | merged into docs branch (`404135a1..1112a197`) | [pr2-postgres-default.zh-CN.md](./pr2-postgres-default.zh-CN.md) |
+| **PR3** | ✅ merged | 7 (T3.1-T3.10) | merged into docs branch (`f63089ae..dda82640`) | [pr3-workspaces.zh-CN.md](./pr3-workspaces.zh-CN.md) |
+| **PR4** | ✅ merged | 14 (T4.1-T4.14) | merged into docs branch (`d98498b7..5c7753c0`) | [pr4-auth-workspace.zh-CN.md](./pr4-auth-workspace.zh-CN.md) |
+| **PR5** | ✅ merged | 11 (T5.1-T5.10 + T5.12) | merged into docs branch (`a7326978..30f2bd00`) | [pr5-business-workspace-id.zh-CN.md](./pr5-business-workspace-id.zh-CN.md) |
+| **PR6** | ✅ merged | 13 (T5.11 + T6.1-T6.15) | merged into docs branch (`361e653d..87ea715c`) | [pr6-routes-paths-workspace.zh-CN.md](./pr6-routes-paths-workspace.zh-CN.md) |
+| **PR7** | ✅ merged | 4 (T7.1-T7.3 + T7.5; T7.4 是反注入验证无代码改动) | merged into docs branch (`1a6ccc9a..d8b13afc`) | [pr7-ci-boundary-scan.zh-CN.md](./pr7-ci-boundary-scan.zh-CN.md) |
+| **PR8** | ✅ merged | 5 (T8.1 + T8.2/T8.3 合并 + T8.4 + T8.5 + T8.6) | merged into docs branch (`1fb07e48..f803f393`) | [pr8-headless-api-schema.zh-CN.md](./pr8-headless-api-schema.zh-CN.md) |
 
 **测试基线**：**PR8 末 3250 passed + 31 skipped**（PR7 末 3241 + 31；+9 passed，PR8 新增 3 + 3 + 2 + 1 = 9 个 schema 测试）。PR6 末 3214 + 30；PR5 末 3150 + 30；PR4 末 3136 + 26；PR3 末 3134 + 25；PR2 末 3087。**18 个 caplog 排序 flake 持续存在**（17 个 pre-existing + 1 PR6 引入，PR7/PR8 均未引入新 flake）→ isolate 跑全 PASS，与 stage 无关；集中清理仍推迟到 follow-up。
 
@@ -66,9 +66,9 @@ PR1 起到 PR8 末，从既有 ~3087 增到 3250 passed（+163 测试，覆盖�
 | PR4 follow-up | Regular user pre-PR4 backfill 脚本 | login 路径已 lazy backfill 覆盖；如果生产有大量预存 regular user，可补 batch 脚本 | 等真出现这个场景再写 |
 | PR4 follow-up | 17 个 pre-existing caplog flake 集中清理 | 跨多个 test 文件的 propagation 问题，与 PR4/5/6 无关 | 单独 follow-up 处理 |
 | ~~PR5 T5.11~~ | ~~ORM model.py `nullable=False` 翻转~~ | **PR6 已落** (commit `87ea715c`) | — |
-| PR5 T5.12 真机 PG smoke | `alembic 0002 → backfill → 0003` 端到端 | agent 不能起 RDS 操作 | 用户跟进；命令清单见 [pr5-business-workspace-id.md "Live smoke 命令"](./pr5-business-workspace-id.md#live-smoke-命令用户跟进) |
-| PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 🟡 部分 done——「双账户互访 404」✅ 由 `multi_tenant.py`（2026-06-27 PASS）覆盖；文件迁移 `make migrate-paths` 部分仍 ⏳。命令清单见 [pr6-routes-paths-workspace.md "Live smoke 命令"](./pr6-routes-paths-workspace.md#live-smoke-命令用户跟进) |
-| PR8 RDS 三张表存在 | `psql "$DATABASE_URL" -c "\dt service_accounts api_keys external_users"` 看 3 行；`\d+ api_keys` 看 `idx_api_keys_active ... WHERE revoked_at IS NULL` | agent 没 RDS 凭证 | 用户跟进；命令清单见 [pr8-headless-api-schema.md "Live smoke 命令"](./pr8-headless-api-schema.md#live-smoke-命令用户跟进) |
+| PR5 T5.12 真机 PG smoke | `alembic 0002 → backfill → 0003` 端到端 | agent 不能起 RDS 操作 | 用户跟进；命令清单见 [pr5-business-workspace-id.zh-CN.md "Live smoke 命令"](./pr5-business-workspace-id.zh-CN.md#live-smoke-命令用户跟进) |
+| PR6 T6.15 真机迁移 smoke | `make migrate-paths --dry-run` → 真迁移 → lifespan warning 消失 → 双账户互访 404 | agent 起不了 dev 服务 | 🟡 部分 done——「双账户互访 404」✅ 由 `multi_tenant.py`（2026-06-27 PASS）覆盖；文件迁移 `make migrate-paths` 部分仍 ⏳。命令清单见 [pr6-routes-paths-workspace.zh-CN.md "Live smoke 命令"](./pr6-routes-paths-workspace.zh-CN.md#live-smoke-命令用户跟进) |
+| PR8 RDS 三张表存在 | `psql "$DATABASE_URL" -c "\dt service_accounts api_keys external_users"` 看 3 行；`\d+ api_keys` 看 `idx_api_keys_active ... WHERE revoked_at IS NULL` | agent 没 RDS 凭证 | 用户跟进；命令清单见 [pr8-headless-api-schema.zh-CN.md "Live smoke 命令"](./pr8-headless-api-schema.zh-CN.md#live-smoke-命令用户跟进) |
 
 ## 即将遇到的开放问题（plan 末尾列的，下个 session 处理）
 

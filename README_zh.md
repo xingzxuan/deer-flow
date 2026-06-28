@@ -53,7 +53,7 @@ DeerFlow 原本面向"单机可信环境、单用户"。本分支按"以个人�
 - **决策（7 份 ADR + spike + 审计）**：[`01-redesign/`](docs/multi-tenant-redesign/01-redesign/)
 - **Stage 0 schema 锁定版 / 落地版**：[`workspace-schema-design`](docs/multi-tenant-redesign/01-redesign/workspace-schema-design.zh-CN.md) · [`database-schema-as-built`](docs/multi-tenant-redesign/01-redesign/database-schema-as-built.zh-CN.md)
 - **落地路线 + 集成轨道**：[`02-rollout/`](docs/multi-tenant-redesign/02-rollout/)
-- **Stage 0 进度面板（权威"现在到哪了"）**：[`03-impl/STATUS.md`](docs/multi-tenant-redesign/03-impl/STATUS.md)
+- **Stage 0 进度面板（权威"现在到哪了"）**：[`03-impl/STATUS.zh-CN.md`](docs/multi-tenant-redesign/03-impl/STATUS.zh-CN.md)
 
 ## 官网
 
@@ -656,7 +656,7 @@ DeerFlow 对模型没有强绑定，只要实现了 OpenAI 兼容 API 的 LLM，
 ## 文档
 
 - [多租户改造汇总索引](docs/multi-tenant-redesign/README.zh-CN.md) - workspace / Postgres / RLS / Headless API 的决策与路线
-- [Stage 0 进度面板](docs/multi-tenant-redesign/03-impl/STATUS.md) - "现在到哪了"的权威来源
+- [Stage 0 进度面板](docs/multi-tenant-redesign/03-impl/STATUS.zh-CN.md) - "现在到哪了"的权威来源
 - [数据库设计落地版](docs/multi-tenant-redesign/01-redesign/database-schema-as-built.zh-CN.md) - 10 张表全字段 / 外键 / 索引参考
 - [贡献指南](CONTRIBUTING.md) - 开发环境搭建与协作流程
 - [配置指南](backend/docs/CONFIGURATION.md) - 安装与配置说明

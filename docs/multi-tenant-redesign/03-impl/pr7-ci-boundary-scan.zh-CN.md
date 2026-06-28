@@ -37,7 +37,7 @@
 - [x] **scanner 红→绿循环**：empty allowlist → 14 violations across 4 files（threads / async_provider / provider / worker，TYPE_CHECKING-only 的 factory.py 正确不在内）；填入 4 entry → PASS
 - [x] **scanner self-test 9 个全过**（防静默空跑）
 - [x] **T7.4 反注入实验**：往 `feedback.py:13` 加一行违规 import → `pytest tests/test_workspace_boundary.py` 单条 fail，error 精准指 `app/gateway/routers/feedback.py:13  imports langgraph.checkpoint.postgres`；revert 后立即返绿
-- [x] **全套 `make test` 3241 passed + 31 skipped + 18 caplog flake**（PR6 末 3214 + 30 + 17；+27 passed / +1 skip / +1 flake — passed delta 包含 PR7 新增 10 个测试以及环境差异导致的 17 个之前 flake 这次稳过，flake 列表形态与 STATUS.md 既有 17 项 + PR6 引入的 `test_path_migration_pending_warning` 一致，与 PR7 改动无关）
+- [x] **全套 `make test` 3241 passed + 31 skipped + 18 caplog flake**（PR6 末 3214 + 30 + 17；+27 passed / +1 skip / +1 flake — passed delta 包含 PR7 新增 10 个测试以及环境差异导致的 17 个之前 flake 这次稳过，flake 列表形态与 STATUS.zh-CN.md 既有 17 项 + PR6 引入的 `test_path_migration_pending_warning` 一致，与 PR7 改动无关）
 - [x] **CI workflow 接入**：扫描器是普通 pytest，已被 `.github/workflows/backend-unit-tests.yml` 全套 run 覆盖；无需新 workflow
 
 ## 文件结构
@@ -46,7 +46,7 @@
 - `backend/tests/test_workspace_boundary.py` — AST 扫描器（127 行）
 - `backend/tests/test_workspace_boundary_self.py` — 扫描器 self-test（93 行）
 - `backend/tests/boundary_allowlist.toml` — 4 个合法 importer + 每行注释（28 行）
-- `docs/multi-tenant-redesign/03-impl/pr7-ci-boundary-scan.md` — 本文件
+- `docs/multi-tenant-redesign/03-impl/pr7-ci-boundary-scan.zh-CN.md` — 本文件
 
 **修改**：
 - `backend/CLAUDE.md` — Boundary check 段 +2 行

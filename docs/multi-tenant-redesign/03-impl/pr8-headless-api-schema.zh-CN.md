@@ -47,7 +47,7 @@
 - `backend/tests/test_api_key_schema.py`（3 cases）
 - `backend/tests/test_external_user_schema.py`（2 cases）
 - `backend/tests/test_pr8_metadata_registration.py`（1 case）
-- `docs/multi-tenant-redesign/03-impl/pr8-headless-api-schema.md` — 本文件
+- `docs/multi-tenant-redesign/03-impl/pr8-headless-api-schema.zh-CN.md` — 本文件
 
 **修改**：
 - `backend/packages/harness/deerflow/persistence/models/__init__.py` — 加 3 行 import + `__all__` 注册
@@ -89,7 +89,7 @@ PYTHONPATH=. uv run pytest -m postgres -v
 
 ## Stage 0 退出门
 
-PR8 是 Stage 0 工程层面最后一个 PR。剩余 Stage 0 退出条件见 [STATUS.md](./STATUS.md)"用户必须跟进的事"：
+PR8 是 Stage 0 工程层面最后一个 PR。剩余 Stage 0 退出条件见 [STATUS.zh-CN.md](./STATUS.zh-CN.md)"用户必须跟进的事"：
 - [ ] RDS 上 `service_accounts` / `api_keys` / `external_users` 三张表 `\dt` 见
 - [ ] `make migrate-paths --dry-run` 在 fresh DB 上输出空
 - [ ] testcontainers ephemeral PG smoke 跑过一次

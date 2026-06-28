@@ -1,6 +1,8 @@
 # 多租户改造 · 总览与汇总索引
 
-> 写于 2026-05-10。把 7 份 ADR + 2 份 spike/审计 + 4 份 rollout / schema 文档，按"ADR 状态 + 5 阶段（Stage 0–4）的业务目标 / 技术路径 / 验证方式"重新串一遍，让团队从任何角度切入都能找到对应位置。
+> ⚠️ **本文是「设计 / 路线」导航，不反映执行进度**（写于 2026-05-10 设计期）。**想知道「现在到哪了」永远先读 [`03-impl/STATUS.zh-CN.md`](./03-impl/STATUS.zh-CN.md)**——那是唯一动态的进度权威。本 README 后续小节里 Stage 0/1 多以 forward-looking 口径描述，与 STATUS 的"已完成"口径并存属正常分工。
+>
+> 写于 2026-05-10。把 7 份 ADR + 2 份 spike/审计 + 4 份 rollout / schema 文档 + 1 份 Stage 1 spec，按"ADR 状态 + 5 阶段（Stage 0–4）的业务目标 / 技术路径 / 验证方式"重新串一遍，让团队从任何角度切入都能找到对应位置。执行记录（STATUS + 各 PR impl note）见 `03-impl/`。
 >
 > **范围**：仅汇总与导航，不引入新决策。具体决策正文在各自的 ADR / rollout 文档里。
 >
@@ -27,12 +29,18 @@ docs/multi-tenant-redesign/
 │   ├── adr-vs-code-audit                  审计：ADR vs 现状代码
 │   ├── multi-tenant-phase-0-plan          Phase-0 时间盒 / 产出物
 │   ├── workspace-schema-design            **Stage 0 schema 锁定版**（不可逆决策点）
-│   └── database-schema-as-built           **数据库设计落地版**（对照实现代码的事实参考）
-└── 02-rollout/                            落地路线 + 集成轨道
-    ├── phased-rollout-by-scale            **Stage 0–4 主线** 路线图
-    ├── stage-0-code-map                   Stage 0 现状代码地图（行号锚点）
-    └── headless-api-track                 业务系统集成轨道（Pattern A / B）
+│   ├── database-schema-as-built           **数据库设计落地版**（对照实现代码的事实参考）
+│   └── stage-1-headless-api-pattern-a-auth-foundation-design  **Stage 1 鉴权地基设计**（Pattern A）
+├── 02-rollout/                            落地路线 + 集成轨道
+│   ├── phased-rollout-by-scale            **Stage 0–4 主线** 路线图
+│   ├── stage-0-code-map                   Stage 0 现状代码地图（行号锚点）
+│   └── headless-api-track                 业务系统集成轨道（Pattern A / B）
+└── 03-impl/                               **执行记录层**（进度 + 各 PR 落地笔记）
+    ├── STATUS                             ★ **唯一进度权威**（"现在到哪了"）
+    └── pr1..pr8                           Stage 0 各 PR impl note（postgres / workspaces / auth / 业务表 / 路由 / boundary / 三表 schema）
 ```
+
+> 命名约定：全部 `.zh-CN.md` 后缀；`01-redesign` 用语义名（`adr-*` / `*-design`），`03-impl` 用 `prN-*` / `STATUS` 顺序名。
 
 ---
 
@@ -51,10 +59,31 @@ docs/multi-tenant-redesign/
 | 审计 | [ADR vs 代码](./01-redesign/adr-vs-code-audit.zh-CN.md) | 已结论 | 2026-05-09 | 代码库 0 处 `tenant`；Better Auth 不存在；ObjectStorage / KMS / Postgres 测试夹具全缺；底座先行 §3.5 |
 | 锁定 | [workspace-schema-design](./01-redesign/workspace-schema-design.zh-CN.md) | **Stage 0 锁定版** | 2026-05-10 | `workspace_id` 命名 + 7 项不可逆决策；Stage 0 PR1 动手前必读 |
 | 参考 | [database-schema-as-built](./01-redesign/database-schema-as-built.zh-CN.md) | **落地版（as-built）** | 2026-06-27 | 对照实现代码的 10 张表全字段 / 外键 / 索引 / 迁移参考；与锁定版冲突以本文为准 |
+| 设计 | [stage-1-headless-api-…-design](./01-redesign/stage-1-headless-api-pattern-a-auth-foundation-design.zh-CN.md) | **Stage 1 设计稿** | 2026-06-28 | Pattern A 鉴权地基 5 PR（三表仓储+token / APIKeyAuthBackend 双路径 / CSRF skip on bearer / 管理 endpoint / `/api/v1` 全量迁移）+ 5 项决策（D1-D5） |
 | 计划 | [phase-0-plan](./01-redesign/multi-tenant-phase-0-plan.zh-CN.md) | 计划 | 2026-05-09 | Phase-0 时间盒 3 周；含底座先行（§3.5） |
 | 路线 | [phased-rollout-by-scale](./02-rollout/phased-rollout-by-scale.zh-CN.md) | **当前主线路线图** | 2026-05-09 | Stage 0–4 + 触发/退出/时间盒/Go-No-Go |
 | 锚点 | [stage-0-code-map](./02-rollout/stage-0-code-map.zh-CN.md) | Stage 0 用 | 2026-05-09 | 当前代码文件:行号锚点 + Stage 0 改动落点 |
 | 集成 | [headless-api-track](./02-rollout/headless-api-track.zh-CN.md) | Stage 1 内并行轨道 | 2026-05-10 | API key + service account + Pattern A/B（不做嵌入式 widget） |
+
+---
+
+## 1.1 执行记录层（`03-impl/`）
+
+> 上面 §1 是"设计 / 路线"（相对静态）；本层是"实际落了什么"（随执行更新）。**进度只信 STATUS，本表只是 impl note 索引。**
+
+| 文档 | 类型 | 作用 |
+|---|---|---|
+| [STATUS](./03-impl/STATUS.zh-CN.md) | ★ 进度权威 | "现在到哪了"唯一来源：8 PR 状态表、测试基线、用户必跟进项、跳过/推迟项、下一步建议。**进新 session 第一件事读它** |
+| [pr1-postgres-setup](./03-impl/pr1-postgres-setup.zh-CN.md) | impl note | Postgres 接入 + testcontainers fixture |
+| [pr2-postgres-default](./03-impl/pr2-postgres-default.zh-CN.md) | impl note | 默认 backend 切 Postgres |
+| [pr3-workspaces](./03-impl/pr3-workspaces.zh-CN.md) | impl note | `workspaces` + `workspace_memberships` 表 + 仓储 |
+| [pr4-auth-workspace](./03-impl/pr4-auth-workspace.zh-CN.md) | impl note | 注册自建 workspace + JWT 扩 `wid`/`role` |
+| [pr5-business-workspace-id](./03-impl/pr5-business-workspace-id.zh-CN.md) | impl note | 业务表加 `workspace_id` + alembic + 回填 |
+| [pr6-routes-paths-workspace](./03-impl/pr6-routes-paths-workspace.zh-CN.md) | impl note | 入口路由 + Paths 系统 workspace 化 |
+| [pr7-ci-boundary-scan](./03-impl/pr7-ci-boundary-scan.zh-CN.md) | impl note | langgraph.checkpoint boundary CI 围栏 |
+| [pr8-headless-api-schema](./03-impl/pr8-headless-api-schema.zh-CN.md) | impl note | `service_accounts`/`api_keys`/`external_users` schema only（Stage 1 地基） |
+
+> Stage 1 的逐 task **实现计划**（writing-plans 产出）将落在 `docs/superpowers/plans/`，与 Stage 0 master plan 一致；其设计稿见 §1 的 stage-1 spec 行。
 
 ---
 
@@ -256,9 +285,10 @@ docs/multi-tenant-redesign/
 ## 7. 阅读路径建议
 
 **第一次进项目（30 min）**：
-1. 本 README
-2. [00-current-state/architecture-overview](./00-current-state/architecture-overview.zh-CN.md) — 现状是什么样的
-3. [phased-rollout-by-scale](./02-rollout/phased-rollout-by-scale.zh-CN.md) §0 + §总览 + §Stage 0 — 现在在哪、下一步做什么
+1. 本 README（设计 / 路线导航）
+2. [03-impl/STATUS](./03-impl/STATUS.zh-CN.md) — **现在到哪了**（先看这个，再看下面的"为什么"）
+3. [00-current-state/architecture-overview](./00-current-state/architecture-overview.zh-CN.md) — 现状是什么样的
+4. [phased-rollout-by-scale](./02-rollout/phased-rollout-by-scale.zh-CN.md) §0 + §总览 + §Stage 0 — 整体路线
 
 **准备动手做 Stage 0（半天）**：
 1. [workspace-schema-design](./01-redesign/workspace-schema-design.zh-CN.md) **全文** — 不可逆决策、PR 拆分
@@ -267,10 +297,12 @@ docs/multi-tenant-redesign/
 4. [ADR-006 §2.1](./01-redesign/adr-006-runtime-channel-tenancy.zh-CN.md) + [adr-spike-langgraph-postgres](./01-redesign/adr-spike-langgraph-postgres.zh-CN.md) — 为什么 LangGraph 表不挂 RLS
 
 **准备动手做 Stage 1（一天）**：
-1. [phased-rollout Stage 1](./02-rollout/phased-rollout-by-scale.zh-CN.md) — 双轨并行
-2. [headless-api-track](./02-rollout/headless-api-track.zh-CN.md) **全文** — Pattern A/B 完整设计
-3. [ADR-003 §4.3-§4.4](./01-redesign/adr-003-llm-key-billing.zh-CN.md) — quota + 悲观预扣
-4. [ADR-002 §3](./01-redesign/adr-002-sandbox-isolation.zh-CN.md) — Stage 1 用 §3 轻量版（**不**读 §5 K8s 完整版）
+1. [03-impl/STATUS](./03-impl/STATUS.zh-CN.md) — Stage 0 收尾现状 + Stage 1 可启动方向
+2. [phased-rollout Stage 1](./02-rollout/phased-rollout-by-scale.zh-CN.md) — 双轨并行
+3. [headless-api-track](./02-rollout/headless-api-track.zh-CN.md) **全文** — Pattern A/B 完整设计
+4. [stage-1-headless-api-…-design](./01-redesign/stage-1-headless-api-pattern-a-auth-foundation-design.zh-CN.md) **全文** — Pattern A 鉴权地基设计稿（动手前必读，含 5 PR + 不可逆决策）
+5. [ADR-003 §4.3-§4.4](./01-redesign/adr-003-llm-key-billing.zh-CN.md) — quota + 悲观预扣（付费 SaaS 轨道）
+6. [ADR-002 §3](./01-redesign/adr-002-sandbox-isolation.zh-CN.md) — Stage 1 用 §3 轻量版（**不**读 §5 K8s 完整版）
 
 **做安全/合规评审**：
 1. ADR-001 / ADR-002 / ADR-003 §4.6（BYO）/ ADR-004 §5.4（strict 装饰器）

@@ -145,4 +145,4 @@ make stop && make dev
 - 跨 workspace 必 404 怎么实现的 → 看 `check_access` 改造（commit `05be7f9a`）+ `@require_permission` 装饰器
 - 路径新形态 → `Paths.thread_dir` 三档优先级（commit `f013fc1a`）
 - 仓储 workspace_id 哨兵模式 → 任一 `*/sql.py` 看 create/get/search 签名
-- 迁移脚本与 PR5 backfill 的边界 → 本文件 "迁移路径" 段，外加 `pr5-business-workspace-id.md`
+- 迁移脚本与 PR5 backfill 的边界 → 本文件 "迁移路径" 段，外加 `pr5-business-workspace-id.zh-CN.md`

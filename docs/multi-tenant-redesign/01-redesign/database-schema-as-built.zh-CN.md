@@ -305,4 +305,4 @@ erDiagram
 - [adr-001-data-isolation.zh-CN.md](./adr-001-data-isolation.zh-CN.md) — 行级 `workspace_id` + Postgres RLS + LangGraph 表两层模型
 - [adr-004-tenant-rbac.zh-CN.md](./adr-004-tenant-rbac.zh-CN.md) — RBAC + JWT 设计
 - [adr-spike-langgraph-postgres.zh-CN.md](./adr-spike-langgraph-postgres.zh-CN.md) — 为何 LangGraph 表不归 ORM 管
-- [03-impl/STATUS.md](../03-impl/STATUS.md) + `03-impl/pr8-headless-api-schema.md` — PR 级实现进度
+- [03-impl/STATUS.zh-CN.md](../03-impl/STATUS.zh-CN.md) + `03-impl/pr8-headless-api-schema.zh-CN.md` — PR 级实现进度
