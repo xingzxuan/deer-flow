@@ -13,6 +13,7 @@ from app.gateway.csrf_middleware import CSRFMiddleware
 from app.gateway.deps import langgraph_runtime
 from app.gateway.routers import (
     agents,
+    api_keys,
     artifacts,
     assistants_compat,
     auth,
@@ -414,6 +415,9 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Service Accounts API is mounted at /api/v1/service-accounts
     app.include_router(service_accounts.router)
+
+    # API Keys API is mounted at /api/v1/api-keys
+    app.include_router(api_keys.router)
 
     # Feedback API is mounted at /api/threads/{thread_id}/runs/{run_id}/feedback
     app.include_router(feedback.router)
